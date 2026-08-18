@@ -1,0 +1,56 @@
+name: Principio Manager Frontend Build Result
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-result:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore verified CP47 build runner
+        run: |
+          set -euo pipefail
+          test -f ci/Principio_Manager_CI_BUILD_RUNNER_CP47.tgz
+          echo "0386eb0d3d03370d1c3d87e7e95063552b3ecfe866e7967ab87d99f5675282d8  ci/Principio_Manager_CI_BUILD_RUNNER_CP47.tgz" | sha256sum -c -
+          tar -xzf ci/Principio_Manager_CI_BUILD_RUNNER_CP47.tgz -C .
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+
+      - name: Bootstrap lockfile when absent
+        working-directory: manager-staging/frontend-react
+        run: |
+          set -euo pipefail
+          if [ ! -f package-lock.json ]; then
+            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          fi
+
+      - name: Install exact dependency graph
+        working-directory: manager-staging/frontend-react
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Build and verify Vite production assets
+        working-directory: manager-staging/frontend-react
+        run: npm run release:build
+
+      - name: Create verified Build Result
+        run: python3 tools/manager_ci_make_frontend_result.py
+
+      - name: Upload Build Result
+        uses: actions/upload-artifact@v4
+        with:
+          name: Principio_Manager_FRONTEND_BUILD_RESULT
+          path: |
+            Principio_Manager_FRONTEND_BUILD_RESULT.tgz
+            Principio_Manager_FRONTEND_BUILD_RESULT.sha256
+          if-no-files-found: error
+          retention-days: 14
