@@ -1,0 +1,3 @@
+import React from'react'
+import{TriangleAlert,RefreshCcw}from'lucide-react'
+export default class AppErrorBoundary extends React.Component{constructor(p){super(p);this.state={error:null}}static getDerivedStateFromError(error){return{error}}componentDidCatch(error,info){console.error('Principio Manager React',error,info)}render(){if(!this.state.error)return this.props.children;return <div className="fatal-shell"><div className="fatal-card"><TriangleAlert size={28}/><div className="eyebrow">Errore interfaccia</div><h1>La schermata non può essere visualizzata.</h1><p>L’operatore resta memorizzato. Ricarica il Manager per continuare.</p><button className="primary" onClick={()=>location.reload()}><RefreshCcw size={15}/> Ricarica</button></div></div>}}
