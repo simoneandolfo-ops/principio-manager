@@ -75,6 +75,7 @@ jobs:
           mkdir -p build-status
           cat > build-status/latest.txt <<EOF
           commit=${GITHUB_SHA}
+          run_id=${GITHUB_RUN_ID}
           verify=${{ steps.verify.outcome }}
           node=${{ steps.node.outcome }}
           build=${{ steps.build.outcome }}
