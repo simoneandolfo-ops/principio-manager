@@ -30,6 +30,15 @@ jobs:
           base64 -d /tmp/frontend-handoff.b64 > Principio_Manager_FRONTEND_BUILD_HANDOFF.tgz
           echo "965f28748c1d0aa7bb0ccc2b1d6d43abd36d3db88827f15c74b0cfff8d874b41  Principio_Manager_FRONTEND_BUILD_HANDOFF.tgz" | sha256sum -c -
           tar -xzf Principio_Manager_FRONTEND_BUILD_HANDOFF.tgz
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('Principio_Manager_FRONTEND_BUILD_HANDOFF/manager-staging/frontend-react/package.json')
+          data=json.loads(p.read_text())
+          data['version']='0.40.0-dev'
+          p.write_text(json.dumps(data,indent=2)+'\n')
+          PY
+          grep -q '"version": "0.40.0-dev"' Principio_Manager_FRONTEND_BUILD_HANDOFF/manager-staging/frontend-react/package.json
 
       - name: Setup Node
         id: node
