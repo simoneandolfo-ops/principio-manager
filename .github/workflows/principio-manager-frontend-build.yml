@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'ci/FRONTEND_BUILD_HANDOFF.b64'
+      - 'ci/frontend_chunks/**'
       - '.github/workflows/principio-manager-frontend-build.yml'
 
 permissions:
@@ -24,7 +24,10 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          base64 -d ci/FRONTEND_BUILD_HANDOFF.b64 > Principio_Manager_FRONTEND_BUILD_HANDOFF.tgz
+          test "$(find ci/frontend_chunks -maxdepth 1 -type f -name 'part*' | wc -l)" -eq 8
+          cat $(find ci/frontend_chunks -maxdepth 1 -type f -name 'part*' | sort -V) > /tmp/frontend-handoff.b64
+          test "$(wc -c < /tmp/frontend-handoff.b64)" -eq 100248
+          base64 -d /tmp/frontend-handoff.b64 > Principio_Manager_FRONTEND_BUILD_HANDOFF.tgz
           echo "965f28748c1d0aa7bb0ccc2b1d6d43abd36d3db88827f15c74b0cfff8d874b41  Principio_Manager_FRONTEND_BUILD_HANDOFF.tgz" | sha256sum -c -
           tar -xzf Principio_Manager_FRONTEND_BUILD_HANDOFF.tgz
 
