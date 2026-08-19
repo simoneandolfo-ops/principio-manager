@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'ci/**'
+      - 'ci/FRONTEND_BUILD_HANDOFF.b64'
       - '.github/workflows/principio-manager-frontend-build.yml'
 
 permissions:
@@ -19,14 +19,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify and extract CP47 runner
+      - name: Restore verified frontend handoff
         id: verify
         continue-on-error: true
         run: |
           set -euo pipefail
-          test -f ci/Principio_Manager_CI_BUILD_RUNNER_CP47.tgz
-          echo "0386eb0d3d03370d1c3d87e7e95063552b3ecfe866e7967ab87d99f5675282d8  ci/Principio_Manager_CI_BUILD_RUNNER_CP47.tgz" | sha256sum -c -
-          tar -xzf ci/Principio_Manager_CI_BUILD_RUNNER_CP47.tgz -C .
+          base64 -d ci/FRONTEND_BUILD_HANDOFF.b64 > Principio_Manager_FRONTEND_BUILD_HANDOFF.tgz
+          echo "965f28748c1d0aa7bb0ccc2b1d6d43abd36d3db88827f15c74b0cfff8d874b41  Principio_Manager_FRONTEND_BUILD_HANDOFF.tgz" | sha256sum -c -
+          tar -xzf Principio_Manager_FRONTEND_BUILD_HANDOFF.tgz
 
       - name: Setup Node
         id: node
@@ -36,36 +36,23 @@ jobs:
         with:
           node-version: '22.16.0'
 
-      - name: Bootstrap lockfile when absent
-        id: lock
+      - name: Build frontend and evidence
+        id: build
         if: steps.verify.outcome == 'success' && steps.node.outcome == 'success'
         continue-on-error: true
-        working-directory: manager-staging/frontend-react
-        run: |
-          set -euo pipefail
-          if [ ! -f package-lock.json ]; then
-            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          fi
+        working-directory: Principio_Manager_FRONTEND_BUILD_HANDOFF
+        run: bash ./build_frontend.sh
 
-      - name: Install exact dependency graph
-        id: install
-        if: steps.lock.outcome == 'success'
-        continue-on-error: true
-        working-directory: manager-staging/frontend-react
-        run: npm ci --ignore-scripts --no-audit --no-fund
-
-      - name: Build and verify Vite production assets
-        id: build
-        if: steps.install.outcome == 'success'
-        continue-on-error: true
-        working-directory: manager-staging/frontend-react
-        run: npm run release:build
-
-      - name: Create verified Build Result
+      - name: Copy Build Result to repository root
         id: result
         if: steps.build.outcome == 'success'
         continue-on-error: true
-        run: python3 tools/manager_ci_make_frontend_result.py
+        run: |
+          set -euo pipefail
+          cp Principio_Manager_FRONTEND_BUILD_HANDOFF/Principio_Manager_FRONTEND_BUILD_RESULT.tgz .
+          cp Principio_Manager_FRONTEND_BUILD_HANDOFF/Principio_Manager_FRONTEND_BUILD_RESULT.sha256 .
+          test -s Principio_Manager_FRONTEND_BUILD_RESULT.tgz
+          test -s Principio_Manager_FRONTEND_BUILD_RESULT.sha256
 
       - name: Upload Build Result
         if: steps.result.outcome == 'success'
@@ -87,8 +74,6 @@ jobs:
           commit=${GITHUB_SHA}
           verify=${{ steps.verify.outcome }}
           node=${{ steps.node.outcome }}
-          lock=${{ steps.lock.outcome }}
-          install=${{ steps.install.outcome }}
           build=${{ steps.build.outcome }}
           result=${{ steps.result.outcome }}
           EOF
@@ -103,5 +88,4 @@ jobs:
 
       - name: Fail workflow when build result failed
         if: always()
-        run: |
-          test "${{ steps.result.outcome }}" = "success"
+        run: test "${{ steps.result.outcome }}" = "success"
