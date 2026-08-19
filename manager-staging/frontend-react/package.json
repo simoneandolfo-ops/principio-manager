@@ -1,0 +1,10 @@
+{
+  "name": "principio-manager-react",
+  "private": true,
+  "version": "0.40.0-dev",
+  "type": "module",
+  "engines": {"node": "^20.19.0 || >=22.12.0", "npm": ">=10"},
+  "scripts": {"dev":"vite","build":"vite build","build:verify":"node ./tools/verify-build.cjs","release:build":"npm run release:precheck && npm run build && npm run build:verify","preview":"vite preview","release:precheck":"node ./tools/check-release-input.cjs","release:bootstrap-lock":"bash ./tools/bootstrap-lock.sh"},
+  "dependencies": {"lucide-react":"1.31.0","react":"19.2.8","react-dom":"19.2.8","react-router-dom":"7.18.2"},
+  "devDependencies": {"@vitejs/plugin-react":"6.0.4","vite":"8.2.0"}
+}
