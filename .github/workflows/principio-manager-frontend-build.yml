@@ -2,6 +2,11 @@ name: Principio Manager Frontend Build Result
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'ci/**'
+      - '.github/workflows/principio-manager-frontend-build.yml'
 
 permissions:
   contents: read
@@ -14,10 +19,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Restore verified CP47 build runner
+      - name: Rebuild and verify CP47 runner
         run: |
           set -euo pipefail
-          test -f ci/Principio_Manager_CI_BUILD_RUNNER_CP47.tgz
+          test -f ci/runner.b64.part0
+          cat $(find ci -maxdepth 1 -type f -name 'runner.b64.part*' | sort -V) > /tmp/runner.b64
+          base64 -d /tmp/runner.b64 > ci/Principio_Manager_CI_BUILD_RUNNER_CP47.tgz
           echo "0386eb0d3d03370d1c3d87e7e95063552b3ecfe866e7967ab87d99f5675282d8  ci/Principio_Manager_CI_BUILD_RUNNER_CP47.tgz" | sha256sum -c -
           tar -xzf ci/Principio_Manager_CI_BUILD_RUNNER_CP47.tgz -C .
 
