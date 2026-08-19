@@ -1,7 +1,5 @@
-commit=ba54755c48ea6c32ebaebe75b151f838283f8b93
+commit=c3be164c80a7b18b47d2322211beca1b80c87f9c
 verify=failure
 node=skipped
-lock=skipped
-install=skipped
 build=skipped
 result=skipped
