@@ -34,12 +34,12 @@ public class PrincipioCallScreeningService extends CallScreeningService {
             });
 
             try {
-                // Il lavoro di rete gira fuori dal main thread. Manteniamo il callback vivo
-                // solo per un tempo breve, restando ben sotto i 5 secondi imposti da Android.
-                future.get(1800, TimeUnit.MILLISECONDS);
+                // Aruba può impiegare oltre 1 secondo tra connessione e handshake TLS.
+                // Restiamo comunque sotto il limite Android di 5 secondi per CallScreeningService.
+                future.get(4200, TimeUnit.MILLISECONDS);
             } catch (TimeoutException e) {
                 future.cancel(true);
-                PendingCallStore.markError(getApplicationContext(), "Timeout invio diretto");
+                PendingCallStore.markError(getApplicationContext(), "Timeout invio diretto dopo 4.2s");
                 CallerUploadWorker.enqueue(getApplicationContext());
             } catch (ExecutionException e) {
                 Throwable cause = e.getCause() != null ? e.getCause() : e;
