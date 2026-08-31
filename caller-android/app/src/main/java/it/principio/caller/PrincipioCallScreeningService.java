@@ -4,6 +4,14 @@ import android.net.Uri;
 import android.telecom.Call;
 import android.telecom.CallScreeningService;
 
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
 public class PrincipioCallScreeningService extends CallScreeningService {
 
     @Override
@@ -14,16 +22,34 @@ public class PrincipioCallScreeningService extends CallScreeningService {
         String phone = handle != null ? handle.getSchemeSpecificPart() : "";
 
         if (phone != null && !phone.trim().isEmpty()) {
-            PendingCallStore.Item item = PendingCallStore.enqueue(getApplicationContext(), phone.trim());
+            final PendingCallStore.Item item = PendingCallStore.enqueue(getApplicationContext(), phone.trim());
+            ExecutorService executor = Executors.newSingleThreadExecutor();
+            Future<Boolean> future = executor.submit(new Callable<Boolean>() {
+                @Override
+                public Boolean call() throws Exception {
+                    ApiClient.sendIncomingFast(getApplicationContext(), item.phone, item.id);
+                    PendingCallStore.markSent(getApplicationContext(), item.id, item.phone);
+                    return true;
+                }
+            });
+
             try {
-                // Tentativo principale mentre Android ha sicuramente svegliato il CallScreeningService.
-                // Timeout molto corto: restiamo ampiamente entro il limite di risposta della chiamata.
-                ApiClient.sendIncomingFast(getApplicationContext(), item.phone, item.id);
-                PendingCallStore.markSent(getApplicationContext(), item.id, item.phone);
-            } catch (Exception e) {
-                PendingCallStore.markError(getApplicationContext(), e.getMessage());
-                // Rete di sicurezza: la coda persistente resta e WorkManager ritenterà.
+                // Il lavoro di rete gira fuori dal main thread. Manteniamo il callback vivo
+                // solo per un tempo breve, restando ben sotto i 5 secondi imposti da Android.
+                future.get(1800, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                future.cancel(true);
+                PendingCallStore.markError(getApplicationContext(), "Timeout invio diretto");
                 CallerUploadWorker.enqueue(getApplicationContext());
+            } catch (ExecutionException e) {
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                PendingCallStore.markError(getApplicationContext(), errorText(cause));
+                CallerUploadWorker.enqueue(getApplicationContext());
+            } catch (Exception e) {
+                PendingCallStore.markError(getApplicationContext(), errorText(e));
+                CallerUploadWorker.enqueue(getApplicationContext());
+            } finally {
+                executor.shutdownNow();
             }
         }
 
@@ -35,5 +61,13 @@ public class PrincipioCallScreeningService extends CallScreeningService {
                 .setSkipNotification(false)
                 .build();
         respondToCall(callDetails, response);
+    }
+
+    private static String errorText(Throwable e) {
+        if (e == null) return "Errore invio sconosciuto";
+        String name = e.getClass().getSimpleName();
+        String msg = e.getMessage();
+        if (msg == null || msg.trim().isEmpty()) return name;
+        return name + ": " + msg.trim();
     }
 }
