@@ -4,15 +4,11 @@ import android.net.Uri;
 import android.telecom.Call;
 import android.telecom.CallScreeningService;
 
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 public class PrincipioCallScreeningService extends CallScreeningService {
+    private static final ExecutorService NETWORK = Executors.newSingleThreadExecutor();
 
     @Override
     public void onScreenCall(Call.Details callDetails) {
@@ -21,38 +17,13 @@ public class PrincipioCallScreeningService extends CallScreeningService {
         Uri handle = callDetails.getHandle();
         String phone = handle != null ? handle.getSchemeSpecificPart() : "";
 
+        PendingCallStore.Item item = null;
         if (phone != null && !phone.trim().isEmpty()) {
-            final PendingCallStore.Item item = PendingCallStore.enqueue(getApplicationContext(), phone.trim());
-            ExecutorService executor = Executors.newSingleThreadExecutor();
-            Future<Boolean> future = executor.submit(new Callable<Boolean>() {
-                @Override
-                public Boolean call() throws Exception {
-                    ApiClient.sendIncomingFast(getApplicationContext(), item.phone, item.id);
-                    PendingCallStore.markSent(getApplicationContext(), item.id, item.phone);
-                    return true;
-                }
-            });
-
-            try {
-                // Aruba può impiegare oltre 1 secondo tra connessione e handshake TLS.
-                // Restiamo comunque sotto il limite Android di 5 secondi per CallScreeningService.
-                future.get(4200, TimeUnit.MILLISECONDS);
-            } catch (TimeoutException e) {
-                future.cancel(true);
-                PendingCallStore.markError(getApplicationContext(), "Timeout invio diretto dopo 4.2s");
-                CallerUploadWorker.enqueue(getApplicationContext());
-            } catch (ExecutionException e) {
-                Throwable cause = e.getCause() != null ? e.getCause() : e;
-                PendingCallStore.markError(getApplicationContext(), errorText(cause));
-                CallerUploadWorker.enqueue(getApplicationContext());
-            } catch (Exception e) {
-                PendingCallStore.markError(getApplicationContext(), errorText(e));
-                CallerUploadWorker.enqueue(getApplicationContext());
-            } finally {
-                executor.shutdownNow();
-            }
+            item = PendingCallStore.enqueue(getApplicationContext(), phone.trim());
         }
 
+        // Come nella prima V1 che sul telefono funzionava: rispondiamo subito ad Android.
+        // Nessuna attesa di rete dentro onScreenCall().
         CallResponse response = new CallResponse.Builder()
                 .setDisallowCall(false)
                 .setRejectCall(false)
@@ -61,6 +32,20 @@ public class PrincipioCallScreeningService extends CallScreeningService {
                 .setSkipNotification(false)
                 .build();
         respondToCall(callDetails, response);
+
+        if (item == null) return;
+        final PendingCallStore.Item queued = item;
+        NETWORK.execute(() -> {
+            try {
+                // Stessi timeout della V1 originale: 3.5s connessione / 5s lettura.
+                ApiClient.sendIncomingStable(getApplicationContext(), queued.phone, queued.id);
+                PendingCallStore.markSent(getApplicationContext(), queued.id, queued.phone);
+            } catch (Exception e) {
+                PendingCallStore.markError(getApplicationContext(), errorText(e));
+                // Solo rete di sicurezza: la chiamata resta già salvata localmente.
+                CallerUploadWorker.enqueue(getApplicationContext());
+            }
+        });
     }
 
     private static String errorText(Throwable e) {
