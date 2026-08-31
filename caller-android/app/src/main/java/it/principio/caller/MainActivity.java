@@ -3,13 +3,11 @@ package it.principio.caller;
 import android.Manifest;
 import android.app.Activity;
 import android.app.role.RoleManager;
-import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -20,6 +18,7 @@ import org.json.JSONObject;
 
 import java.text.DateFormat;
 import java.util.Date;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -39,7 +38,7 @@ public class MainActivity extends Activity {
         CallerUploadWorker.enqueue(this);
     }
 
-    private View buildUi() {
+    private android.view.View buildUi() {
         int pad = dp(20);
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
@@ -49,25 +48,18 @@ public class MainActivity extends Activity {
         scroll.addView(root);
 
         root.addView(label("PRINCIPIO", 25, true));
-        TextView subtitle = label("Caller Bridge · 1.1", 14, false);
+        TextView subtitle = label("Caller Bridge · 1.2", 14, false);
         subtitle.setTextColor(Color.rgb(120,120,120));
         root.addView(subtitle);
 
-        TextView expl = label(
-                "\nIl numero viene salvato sul telefono appena arriva la chiamata e inviato al Manager in background. " +
-                "Non serve tenere aperta questa app.\n",
-                15, false);
-        root.addView(expl);
+        root.addView(label("\nIl numero viene salvato subito e inviato direttamente mentre Android gestisce la chiamata. La coda background resta come sicurezza.\n", 15, false));
 
         root.addView(label("URL Manager", 13, true));
         urlField = new EditText(this);
         urlField.setSingleLine(true);
         urlField.setHint("https://dominio.it/manager");
         String saved = ApiClient.getManagerUrl(this);
-        if (!saved.isEmpty()) {
-            saved = saved.replaceAll("/public/api\\.php$", "");
-            urlField.setText(saved);
-        }
+        if (!saved.isEmpty()) urlField.setText(saved.replaceAll("/public/api\\.php$", ""));
         root.addView(urlField, full());
 
         root.addView(label("PIN operatore / admin", 13, true));
@@ -88,16 +80,12 @@ public class MainActivity extends Activity {
         contacts.setOnClickListener(v -> requestPermissions(new String[]{Manifest.permission.READ_CONTACTS}, 201));
         root.addView(contacts, marginTop(10));
 
-        Button test = button("TEST CODA BACKGROUND");
-        test.setOnClickListener(v -> testQueue());
+        Button test = button("TEST INVIO DIRETTO");
+        test.setOnClickListener(v -> testDirect());
         root.addView(test, marginTop(10));
 
-        Button retry = button("RIPROVA INVII IN ATTESA");
-        retry.setOnClickListener(v -> {
-            CallerUploadWorker.enqueue(this);
-            setStatus("Invio coda richiesto...");
-            scheduleRefresh();
-        });
+        Button retry = button("INVIA ORA I NUMERI IN ATTESA");
+        retry.setOnClickListener(v -> flushQueueDirect());
         root.addView(retry, marginTop(10));
 
         status = label("", 14, false);
@@ -109,22 +97,16 @@ public class MainActivity extends Activity {
         diagnostics.setTextColor(Color.rgb(90,90,90));
         root.addView(diagnostics);
 
-        TextView note = label(
-                "\nLa telefonata non viene bloccata né registrata. Se manca Internet, il numero resta in coda e viene ritentato automaticamente.",
-                12, false);
+        TextView note = label("\nLa telefonata non viene bloccata né registrata. Se l'invio diretto fallisce, il numero resta sul telefono finché non viene confermato dal Manager.", 12, false);
         note.setTextColor(Color.rgb(110,110,110));
         root.addView(note);
-
         return scroll;
     }
 
     private void connect() {
         final String rawUrl = urlField.getText().toString().trim();
         final String pin = pinField.getText().toString().trim();
-        if (rawUrl.isEmpty() || pin.isEmpty()) {
-            setStatus("Inserisci URL e PIN.");
-            return;
-        }
+        if (rawUrl.isEmpty() || pin.isEmpty()) { setStatus("Inserisci URL e PIN."); return; }
         setStatus("Collegamento...");
         io.execute(() -> {
             try {
@@ -132,12 +114,8 @@ public class MainActivity extends Activity {
                 String token = result.optString("token", "");
                 if (token.isEmpty()) throw new IllegalStateException("Token mancante.");
                 ApiClient.saveConnection(this, rawUrl, token);
-                CallerUploadWorker.enqueue(this);
-                runOnUiThread(() -> {
-                    pinField.setText("");
-                    setStatus("✓ Manager collegato");
-                    refreshStatus();
-                });
+                runOnUiThread(() -> { pinField.setText(""); setStatus("✓ Manager collegato"); refreshStatus(); });
+                flushQueueDirect();
             } catch (Exception e) {
                 runOnUiThread(() -> setStatus("Errore: " + e.getMessage()));
             }
@@ -146,117 +124,76 @@ public class MainActivity extends Activity {
 
     private void requestCallScreeningRole() {
         RoleManager rm = (RoleManager) getSystemService(ROLE_SERVICE);
-        if (rm == null || !rm.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) {
-            setStatus("Questo telefono non espone il ruolo Call Screening.");
-            return;
-        }
-        if (rm.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)) {
-            setStatus("✓ Principio Caller è già il servizio di identificazione chiamate.");
-            return;
-        }
+        if (rm == null || !rm.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) { setStatus("Questo telefono non espone il ruolo Call Screening."); return; }
+        if (rm.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)) { setStatus("✓ Principio Caller è già il servizio di identificazione chiamate."); return; }
         startActivityForResult(rm.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING), 101);
     }
 
-    private void testQueue() {
-        try {
-            PendingCallStore.enqueue(this, "+393331234567");
-            CallerUploadWorker.enqueue(this);
-            setStatus("✓ Numero test salvato in coda. Invio background avviato.");
-            scheduleRefresh();
-        } catch (Exception e) {
-            setStatus("Errore test: " + e.getMessage());
-        }
+    private void testDirect() {
+        setStatus("Test invio diretto...");
+        io.execute(() -> {
+            PendingCallStore.Item item = null;
+            try {
+                item = PendingCallStore.enqueue(this, "+393331234567");
+                ApiClient.sendIncoming(this, item.phone, item.id);
+                PendingCallStore.markSent(this, item.id, item.phone);
+                runOnUiThread(() -> { setStatus("✓ Test ricevuto dal Manager"); refreshStatus(); });
+            } catch (Exception e) {
+                PendingCallStore.markError(this, e.getMessage());
+                runOnUiThread(() -> { setStatus("Errore invio: " + e.getMessage()); refreshStatus(); });
+            }
+        });
     }
 
-    private void scheduleRefresh() {
-        handler.postDelayed(this::refreshStatus, 1200);
-        handler.postDelayed(this::refreshStatus, 3500);
+    private void flushQueueDirect() {
+        setStatus("Invio diretto della coda...");
+        io.execute(() -> {
+            try {
+                List<PendingCallStore.Item> items = PendingCallStore.all(this);
+                int sent = 0;
+                for (PendingCallStore.Item item : items) {
+                    ApiClient.sendIncoming(this, item.phone, item.id);
+                    PendingCallStore.markSent(this, item.id, item.phone);
+                    sent++;
+                }
+                final int total = sent;
+                runOnUiThread(() -> { setStatus("✓ Inviati: " + total); refreshStatus(); });
+            } catch (Exception e) {
+                PendingCallStore.markError(this, e.getMessage());
+                runOnUiThread(() -> { setStatus("Errore invio: " + e.getMessage()); refreshStatus(); });
+            }
+        });
     }
 
     private void refreshStatus() {
         if (status == null) return;
         RoleManager rm = (RoleManager) getSystemService(ROLE_SERVICE);
-        boolean role = rm != null && rm.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)
-                && rm.isRoleHeld(RoleManager.ROLE_CALL_SCREENING);
+        boolean role = rm != null && rm.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING) && rm.isRoleHeld(RoleManager.ROLE_CALL_SCREENING);
         boolean contacts = checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED;
         boolean connected = !ApiClient.getManagerUrl(this).isEmpty() && !ApiClient.getToken(this).isEmpty();
         int pending = PendingCallStore.count(this);
-
-        status.setText(
-                (connected ? "✓" : "○") + " Manager collegato\n" +
-                (role ? "✓" : "○") + " Identificazione chiamate\n" +
-                (contacts ? "✓" : "○") + " Contatti consentiti\n" +
-                (pending == 0 ? "✓" : "!") + " In attesa di invio: " + pending
-        );
+        status.setText((connected ? "✓" : "○") + " Manager collegato\n" + (role ? "✓" : "○") + " Identificazione chiamate\n" + (contacts ? "✓" : "○") + " Contatti consentiti\n" + (pending == 0 ? "✓" : "!") + " In attesa di invio: " + pending);
 
         StringBuilder d = new StringBuilder();
         long interceptedAt = PendingCallStore.lastInterceptAt(this);
         long sentAt = PendingCallStore.lastSentAt(this);
-        if (interceptedAt > 0) {
-            d.append("Ultima intercettata: ")
-                    .append(PendingCallStore.lastInterceptPhone(this))
-                    .append(" · ").append(formatTime(interceptedAt)).append("\n");
-        }
-        if (sentAt > 0) {
-            d.append("Ultimo invio riuscito: ")
-                    .append(PendingCallStore.lastSentPhone(this))
-                    .append(" · ").append(formatTime(sentAt)).append("\n");
-        }
+        if (interceptedAt > 0) d.append("Ultima intercettata: ").append(PendingCallStore.lastInterceptPhone(this)).append(" · ").append(formatTime(interceptedAt)).append("\n");
+        if (sentAt > 0) d.append("Ultimo invio riuscito: ").append(PendingCallStore.lastSentPhone(this)).append(" · ").append(formatTime(sentAt)).append("\n");
         String err = PendingCallStore.lastError(this);
         if (!err.isEmpty()) d.append("Ultimo errore: ").append(err);
         if (d.length() == 0) d.append("Nessuna chiamata ancora intercettata.");
         diagnostics.setText(d.toString().trim());
     }
 
-    private String formatTime(long millis) {
-        return DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(new Date(millis));
-    }
-
+    private String formatTime(long millis) { return DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(new Date(millis)); }
     private void setStatus(String s) { status.setText(s); }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        CallerUploadWorker.enqueue(this);
-        refreshStatus();
-    }
+    @Override protected void onResume() { super.onResume(); refreshStatus(); }
+    @Override protected void onDestroy() { io.shutdownNow(); handler.removeCallbacksAndMessages(null); super.onDestroy(); }
 
-    @Override
-    protected void onDestroy() {
-        io.shutdownNow();
-        handler.removeCallbacksAndMessages(null);
-        super.onDestroy();
-    }
-
-    private TextView label(String text, int sp, boolean bold) {
-        TextView t = new TextView(this);
-        t.setText(text);
-        t.setTextSize(sp);
-        t.setTextColor(Color.rgb(25,25,25));
-        if (bold) t.setTypeface(null, 1);
-        return t;
-    }
-
-    private Button button(String text) {
-        Button b = new Button(this);
-        b.setText(text);
-        b.setAllCaps(false);
-        b.setTextSize(14);
-        b.setMinHeight(dp(52));
-        return b;
-    }
-
-    private LinearLayout.LayoutParams full() {
-        return new LinearLayout.LayoutParams(-1, -2);
-    }
-
-    private LinearLayout.LayoutParams marginTop(int dp) {
-        LinearLayout.LayoutParams p = full();
-        p.topMargin = dp(dp);
-        return p;
-    }
-
-    private int dp(int v) {
-        return Math.round(v * getResources().getDisplayMetrics().density);
-    }
+    private TextView label(String text, int sp, boolean bold) { TextView t = new TextView(this); t.setText(text); t.setTextSize(sp); t.setTextColor(Color.rgb(25,25,25)); if (bold) t.setTypeface(null,1); return t; }
+    private Button button(String text) { Button b = new Button(this); b.setText(text); b.setAllCaps(false); b.setTextSize(14); b.setMinHeight(dp(52)); return b; }
+    private LinearLayout.LayoutParams full() { return new LinearLayout.LayoutParams(-1,-2); }
+    private LinearLayout.LayoutParams marginTop(int top) { LinearLayout.LayoutParams p = full(); p.topMargin = dp(top); return p; }
+    private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 }
