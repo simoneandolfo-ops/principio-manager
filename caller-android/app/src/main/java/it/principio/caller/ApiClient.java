@@ -30,8 +30,8 @@ public final class ApiClient {
     public static String normalizeManagerUrl(String raw) {
         String v = raw == null ? "" : raw.trim();
         while (v.endsWith("/")) v = v.substring(0, v.length()-1);
-        if (v.endsWith("/public")) return v + "/api.php";
         if (v.endsWith("/public/api.php")) return v;
+        if (v.endsWith("/public")) return v + "/api.php";
         return v + "/public/api.php";
     }
 
@@ -61,13 +61,19 @@ public final class ApiClient {
     }
 
     public static JSONObject call(String endpoint, String fn, JSONArray args) throws Exception {
+        return call(endpoint, fn, args, 3500, 5000);
+    }
+
+    public static JSONObject call(String endpoint, String fn, JSONArray args, int connectTimeout, int readTimeout) throws Exception {
         URL url = new URL(endpoint);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setConnectTimeout(3500);
-        conn.setReadTimeout(5000);
+        conn.setConnectTimeout(connectTimeout);
+        conn.setReadTimeout(readTimeout);
         conn.setRequestMethod("POST");
         conn.setDoOutput(true);
+        conn.setUseCaches(false);
         conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+        conn.setRequestProperty("Connection", "close");
 
         JSONObject body = new JSONObject();
         body.put("fn", fn);
@@ -76,6 +82,7 @@ public final class ApiClient {
         byte[] data = body.toString().getBytes(StandardCharsets.UTF_8);
         try (OutputStream out = conn.getOutputStream()) {
             out.write(data);
+            out.flush();
         }
 
         int code = conn.getResponseCode();
@@ -87,6 +94,7 @@ public final class ApiClient {
                 while ((line = r.readLine()) != null) text.append(line);
             }
         }
+        conn.disconnect();
         JSONObject json = new JSONObject(text.length() == 0 ? "{}" : text.toString());
         if (code < 200 || code >= 300 || !json.optBoolean("ok", false)) {
             throw new IllegalStateException(json.optString("error", "Errore Manager (" + code + ")"));
@@ -107,6 +115,14 @@ public final class ApiClient {
     }
 
     public static JSONObject sendIncoming(Context c, String phone, String eventKey) throws Exception {
+        return sendIncomingInternal(c, phone, eventKey, 3500, 5000);
+    }
+
+    public static JSONObject sendIncomingFast(Context c, String phone, String eventKey) throws Exception {
+        return sendIncomingInternal(c, phone, eventKey, 700, 900);
+    }
+
+    private static JSONObject sendIncomingInternal(Context c, String phone, String eventKey, int connectTimeout, int readTimeout) throws Exception {
         String endpoint = getManagerUrl(c);
         String token = getToken(c);
         if (endpoint.isEmpty() || token.isEmpty()) {
@@ -117,6 +133,6 @@ public final class ApiClient {
                 .put(getDeviceId(c))
                 .put(token)
                 .put(eventKey == null ? "" : eventKey);
-        return call(endpoint, "callerRegisterIncoming", args);
+        return call(endpoint, "callerRegisterIncoming", args, connectTimeout, readTimeout);
     }
 }
