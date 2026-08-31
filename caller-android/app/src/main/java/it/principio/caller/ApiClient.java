@@ -61,7 +61,7 @@ public final class ApiClient {
     }
 
     public static JSONObject call(String endpoint, String fn, JSONArray args) throws Exception {
-        return call(endpoint, fn, args, 3500, 5000);
+        return call(endpoint, fn, args, 6000, 8000);
     }
 
     public static JSONObject call(String endpoint, String fn, JSONArray args, int connectTimeout, int readTimeout) throws Exception {
@@ -115,11 +115,11 @@ public final class ApiClient {
     }
 
     public static JSONObject sendIncoming(Context c, String phone, String eventKey) throws Exception {
-        return sendIncomingInternal(c, phone, eventKey, 3500, 5000);
+        return sendIncomingInternal(c, phone, eventKey, 6000, 8000);
     }
 
     public static JSONObject sendIncomingFast(Context c, String phone, String eventKey) throws Exception {
-        return sendIncomingInternal(c, phone, eventKey, 700, 900);
+        return sendIncomingInternal(c, phone, eventKey, 2500, 3000);
     }
 
     private static JSONObject sendIncomingInternal(Context c, String phone, String eventKey, int connectTimeout, int readTimeout) throws Exception {
