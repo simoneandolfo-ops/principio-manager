@@ -48,11 +48,11 @@ public class MainActivity extends Activity {
         scroll.addView(root);
 
         root.addView(label("PRINCIPIO", 25, true));
-        TextView subtitle = label("Caller Bridge · 1.2", 14, false);
+        TextView subtitle = label("Caller Bridge · 1.5", 14, false);
         subtitle.setTextColor(Color.rgb(120,120,120));
         root.addView(subtitle);
 
-        root.addView(label("\nIl numero viene salvato subito e inviato direttamente mentre Android gestisce la chiamata. La coda background resta come sicurezza.\n", 15, false));
+        root.addView(label("\nLa chiamata viene salvata subito, Android viene lasciato libero immediatamente e il numero viene inviato in modo asincrono al Manager. La coda locale resta come sicurezza.\n", 15, false));
 
         root.addView(label("URL Manager", 13, true));
         urlField = new EditText(this);
@@ -97,7 +97,7 @@ public class MainActivity extends Activity {
         diagnostics.setTextColor(Color.rgb(90,90,90));
         root.addView(diagnostics);
 
-        TextView note = label("\nLa telefonata non viene bloccata né registrata. Se l'invio diretto fallisce, il numero resta sul telefono finché non viene confermato dal Manager.", 12, false);
+        TextView note = label("\nLa telefonata non viene bloccata né registrata. Se l'invio asincrono fallisce, il numero resta sul telefono finché non viene confermato dal Manager.", 12, false);
         note.setTextColor(Color.rgb(110,110,110));
         root.addView(note);
         return scroll;
@@ -117,7 +117,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> { pinField.setText(""); setStatus("✓ Manager collegato"); refreshStatus(); });
                 flushQueueDirect();
             } catch (Exception e) {
-                runOnUiThread(() -> setStatus("Errore: " + e.getMessage()));
+                runOnUiThread(() -> setStatus("Errore: " + errorText(e)));
             }
         });
     }
@@ -132,15 +132,14 @@ public class MainActivity extends Activity {
     private void testDirect() {
         setStatus("Test invio diretto...");
         io.execute(() -> {
-            PendingCallStore.Item item = null;
             try {
-                item = PendingCallStore.enqueue(this, "+393331234567");
+                PendingCallStore.Item item = PendingCallStore.enqueue(this, "+393331234567");
                 ApiClient.sendIncoming(this, item.phone, item.id);
                 PendingCallStore.markSent(this, item.id, item.phone);
                 runOnUiThread(() -> { setStatus("✓ Test ricevuto dal Manager"); refreshStatus(); });
             } catch (Exception e) {
-                PendingCallStore.markError(this, e.getMessage());
-                runOnUiThread(() -> { setStatus("Errore invio: " + e.getMessage()); refreshStatus(); });
+                PendingCallStore.markError(this, errorText(e));
+                runOnUiThread(() -> { setStatus("Errore invio: " + errorText(e)); refreshStatus(); });
             }
         });
     }
@@ -159,8 +158,8 @@ public class MainActivity extends Activity {
                 final int total = sent;
                 runOnUiThread(() -> { setStatus("✓ Inviati: " + total); refreshStatus(); });
             } catch (Exception e) {
-                PendingCallStore.markError(this, e.getMessage());
-                runOnUiThread(() -> { setStatus("Errore invio: " + e.getMessage()); refreshStatus(); });
+                PendingCallStore.markError(this, errorText(e));
+                runOnUiThread(() -> { setStatus("Errore invio: " + errorText(e)); refreshStatus(); });
             }
         });
     }
@@ -183,6 +182,13 @@ public class MainActivity extends Activity {
         if (!err.isEmpty()) d.append("Ultimo errore: ").append(err);
         if (d.length() == 0) d.append("Nessuna chiamata ancora intercettata.");
         diagnostics.setText(d.toString().trim());
+    }
+
+    private static String errorText(Throwable e) {
+        if (e == null) return "Errore sconosciuto";
+        String name = e.getClass().getSimpleName();
+        String msg = e.getMessage();
+        return (msg == null || msg.trim().isEmpty()) ? name : name + ": " + msg.trim();
     }
 
     private String formatTime(long millis) { return DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(new Date(millis)); }
