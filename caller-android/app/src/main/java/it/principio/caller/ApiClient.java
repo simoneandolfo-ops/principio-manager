@@ -23,9 +23,7 @@ public final class ApiClient {
 
     private ApiClient() {}
 
-    public static SharedPreferences prefs(Context c) {
-        return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-    }
+    public static SharedPreferences prefs(Context c) { return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE); }
 
     public static String normalizeManagerUrl(String raw) {
         String v = raw == null ? "" : raw.trim();
@@ -35,13 +33,8 @@ public final class ApiClient {
         return v + "/public/api.php";
     }
 
-    public static String getManagerUrl(Context c) {
-        return prefs(c).getString(KEY_URL, "");
-    }
-
-    public static String getToken(Context c) {
-        return prefs(c).getString(KEY_TOKEN, "");
-    }
+    public static String getManagerUrl(Context c) { return prefs(c).getString(KEY_URL, ""); }
+    public static String getToken(Context c) { return prefs(c).getString(KEY_TOKEN, ""); }
 
     public static String getDeviceId(Context c) {
         SharedPreferences p = prefs(c);
@@ -54,10 +47,7 @@ public final class ApiClient {
     }
 
     public static void saveConnection(Context c, String rawUrl, String token) {
-        prefs(c).edit()
-                .putString(KEY_URL, normalizeManagerUrl(rawUrl))
-                .putString(KEY_TOKEN, token == null ? "" : token)
-                .apply();
+        prefs(c).edit().putString(KEY_URL, normalizeManagerUrl(rawUrl)).putString(KEY_TOKEN, token == null ? "" : token).apply();
     }
 
     public static JSONObject call(String endpoint, String fn, JSONArray args) throws Exception {
@@ -78,12 +68,8 @@ public final class ApiClient {
         JSONObject body = new JSONObject();
         body.put("fn", fn);
         body.put("args", args);
-
         byte[] data = body.toString().getBytes(StandardCharsets.UTF_8);
-        try (OutputStream out = conn.getOutputStream()) {
-            out.write(data);
-            out.flush();
-        }
+        try (OutputStream out = conn.getOutputStream()) { out.write(data); out.flush(); }
 
         int code = conn.getResponseCode();
         InputStream input = code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream();
@@ -103,36 +89,20 @@ public final class ApiClient {
     }
 
     public static JSONObject login(String rawUrl, String pin) throws Exception {
-        String endpoint = normalizeManagerUrl(rawUrl);
-        JSONArray args = new JSONArray().put(pin);
-        JSONObject result = call(endpoint, "loginOperator", args);
+        JSONObject result = call(normalizeManagerUrl(rawUrl), "loginOperator", new JSONArray().put(pin));
         if (result == null) throw new IllegalStateException("Risposta login non valida.");
         return result;
     }
 
-    public static JSONObject sendIncoming(Context c, String phone) throws Exception {
-        return sendIncoming(c, phone, "");
-    }
-
-    public static JSONObject sendIncoming(Context c, String phone, String eventKey) throws Exception {
-        return sendIncomingInternal(c, phone, eventKey, 6000, 8000);
-    }
-
-    public static JSONObject sendIncomingFast(Context c, String phone, String eventKey) throws Exception {
-        return sendIncomingInternal(c, phone, eventKey, 2500, 3000);
-    }
+    public static JSONObject sendIncoming(Context c, String phone) throws Exception { return sendIncoming(c, phone, ""); }
+    public static JSONObject sendIncoming(Context c, String phone, String eventKey) throws Exception { return sendIncomingInternal(c, phone, eventKey, 6000, 8000); }
+    public static JSONObject sendIncomingStable(Context c, String phone, String eventKey) throws Exception { return sendIncomingInternal(c, phone, eventKey, 3500, 5000); }
 
     private static JSONObject sendIncomingInternal(Context c, String phone, String eventKey, int connectTimeout, int readTimeout) throws Exception {
         String endpoint = getManagerUrl(c);
         String token = getToken(c);
-        if (endpoint.isEmpty() || token.isEmpty()) {
-            throw new IllegalStateException("Principio Caller non configurato.");
-        }
-        JSONArray args = new JSONArray()
-                .put(phone)
-                .put(getDeviceId(c))
-                .put(token)
-                .put(eventKey == null ? "" : eventKey);
+        if (endpoint.isEmpty() || token.isEmpty()) throw new IllegalStateException("Principio Caller non configurato.");
+        JSONArray args = new JSONArray().put(phone).put(getDeviceId(c)).put(token).put(eventKey == null ? "" : eventKey);
         return call(endpoint, "callerRegisterIncoming", args, connectTimeout, readTimeout);
     }
 }
