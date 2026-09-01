@@ -31,6 +31,14 @@ jobs:
           unzip -q recallshot-source.zip -d recallshot-android
           if [ -d recallshot-ci/overrides ]; then cp -R recallshot-ci/overrides/. recallshot-android/; fi
 
+      - name: Upload reconstructed source
+        uses: actions/upload-artifact@v4
+        with:
+          name: RecallShot-current-source
+          path: recallshot-android/**
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
