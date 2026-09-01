@@ -1,1 +1,1 @@
-trigger GitHub Actions after installing temporary base workflow
+trigger RecallShot Android 17 preview CI - attempt 2
