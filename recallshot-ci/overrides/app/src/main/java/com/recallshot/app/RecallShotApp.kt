@@ -11,6 +11,7 @@ class RecallShotApp : Application() {
     override fun onCreate() {
         super.onCreate()
         NotificationChannels.create(this)
+        WorkScheduler.ensureMediaTrigger(this)
         WorkScheduler.ensurePeriodicScan(this)
         WorkScheduler.ensureOcrRecovery(this)
         mediaObserver = MediaStoreObserver(this).also { it.register() }
