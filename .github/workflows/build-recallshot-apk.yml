@@ -6,6 +6,11 @@ on:
     paths:
       - 'recallshot-ci/**'
       - '.github/workflows/build-recallshot-apk.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'recallshot-ci/**'
+      - '.github/workflows/build-recallshot-apk.yml'
   workflow_dispatch:
 
 jobs:
@@ -53,6 +58,12 @@ jobs:
       - name: Build debug APK
         working-directory: recallshot-android
         run: gradle --no-daemon assembleDebug
+
+      - name: Verify APK signature
+        working-directory: recallshot-android
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk || apksigner verify --verbose app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
