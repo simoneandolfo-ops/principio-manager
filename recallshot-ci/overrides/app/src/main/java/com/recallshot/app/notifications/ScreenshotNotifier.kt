@@ -14,12 +14,31 @@ import com.recallshot.app.R
 
 object ScreenshotNotifier {
     fun show(context: Context, count: Int) {
-        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
-        val open = PendingIntent.getActivity(context, 90, Intent(context, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val text = if (count == 1) "Screenshot acquisito e aggiunto a RecallShot" else "$count nuovi screenshot aggiunti a RecallShot"
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
+
+        val open = PendingIntent.getActivity(
+            context,
+            90,
+            Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val text = if (count == 1) "Screenshot aggiunto · classificazione in corso…"
+        else "$count nuovi screenshot aggiunti · classificazione in corso…"
         val notification = NotificationCompat.Builder(context, NotificationChannels.SCREENSHOTS)
-            .setSmallIcon(R.drawable.ic_notification).setContentTitle("RecallShot").setContentText(text).setContentIntent(open)
-            .setAutoCancel(true).setSilent(true).setPriority(NotificationCompat.PRIORITY_LOW).setTimeoutAfter(4500).build()
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("RecallShot")
+            .setContentText(text)
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setTimeoutAfter(6500)
+            .build()
         NotificationManagerCompat.from(context).notify(901, notification)
     }
 }
