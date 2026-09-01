@@ -21,10 +21,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Reconstruct RecallShot source
+      - name: Verify payload chunks and reconstruct RecallShot source
         shell: bash
         run: |
           set -euo pipefail
+          tr -d '[:space:]' < recallshot-ci/part-aa.b64 | sha256sum
+          tr -d '[:space:]' < recallshot-ci/part-ab.b64 | sha256sum
+          tr -d '[:space:]' < recallshot-ci/part-ac.b64 | sha256sum
+          tr -d '[:space:]' < recallshot-ci/part-ad.b64 | sha256sum
+          echo 'expected aa 780f127b4a2303a5bc240ed5b0ce3d158834189305ad3854756b2161d2667344'
+          echo 'expected ab 0c74bdd96017c952162394aeb69761ea5924b0172904b20529c6ee5ddf8630b1'
+          echo 'expected ac ffdffedb971e4d9fde0b92ff9cc1322e265ad3a838f286de16671ad3a4ded93c'
+          echo 'expected ad b9fccdd9ea9a64db6deeec7364e16d2016ab78da6ed97136daa8c5fee003ad29'
           cat recallshot-ci/part-*.b64 | tr -d '[:space:]' | base64 --decode > recallshot-source.zip
           echo '58f2348d1363f30c567aa285566d4189aee0dfe0f58d38a3d9293875ded20904  recallshot-source.zip' | sha256sum -c -
           mkdir -p recallshot-android
@@ -40,7 +48,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install Android 37
-        run: sdkmanager 'platforms;android-37'
+        run: sdkmanager 'platforms;android-37' 'build-tools;35.0.0'
 
       - name: Setup Gradle 9.5
         uses: gradle/actions/setup-gradle@v4
@@ -59,10 +67,10 @@ jobs:
         working-directory: recallshot-android
         run: gradle --no-daemon assembleDebug
 
-      - name: Verify APK signature
+      - name: Verify APK signature and checksum
         working-directory: recallshot-android
         run: |
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk || apksigner verify --verbose app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk
           sha256sum app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload APK
