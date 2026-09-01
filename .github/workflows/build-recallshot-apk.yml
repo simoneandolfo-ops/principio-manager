@@ -40,16 +40,26 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android 17 preview SDK
+      - name: Install Android 17 SDK
         shell: bash
         run: |
           set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager --channel=3 'platforms;android-37' 'build-tools;37.0.0' || {
-            echo 'API 37 packages not available by numeric id. Candidate packages:'
-            sdkmanager --list --channel=3 | grep -Ei 'android-37|cinnamon|build-tools;37' || true
+          sdkmanager --list --channel=3 > /tmp/sdk-list.txt
+          echo 'Android 17 SDK candidates:'
+          grep -Ei 'platforms;android-(37|cinnamon)|build-tools;37' /tmp/sdk-list.txt || true
+          PLATFORM=$(awk -F'|' '/platforms;android-(37|[Cc]innamon)/ {gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1; exit}' /tmp/sdk-list.txt)
+          if [ -z "$PLATFORM" ]; then
+            echo 'No Android 17/Cinnamon Bun platform package was exposed by sdkmanager.'
             exit 1
-          }
+          fi
+          BUILD_TOOLS=$(awk -F'|' '/build-tools;37\./ {gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1}' /tmp/sdk-list.txt | sort -V | tail -1)
+          if [ -z "$BUILD_TOOLS" ]; then
+            BUILD_TOOLS=$(awk -F'|' '/build-tools;36\./ {gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1}' /tmp/sdk-list.txt | sort -V | tail -1)
+          fi
+          echo "Installing platform: $PLATFORM"
+          echo "Installing build tools: $BUILD_TOOLS"
+          sdkmanager --channel=3 "$PLATFORM" "$BUILD_TOOLS"
 
       - name: Setup Gradle 9.5
         uses: gradle/actions/setup-gradle@v4
