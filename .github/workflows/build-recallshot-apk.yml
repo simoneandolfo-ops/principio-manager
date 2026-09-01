@@ -21,22 +21,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify payload chunks and reconstruct RecallShot source
+      - name: Reconstruct RecallShot source
         shell: bash
         run: |
           set -euo pipefail
-          tr -d '[:space:]' < recallshot-ci/part-aa.b64 | sha256sum
-          tr -d '[:space:]' < recallshot-ci/part-ab.b64 | sha256sum
-          tr -d '[:space:]' < recallshot-ci/part-ac.b64 | sha256sum
-          tr -d '[:space:]' < recallshot-ci/part-ad.b64 | sha256sum
-          echo 'expected aa 780f127b4a2303a5bc240ed5b0ce3d158834189305ad3854756b2161d2667344'
-          echo 'expected ab 0c74bdd96017c952162394aeb69761ea5924b0172904b20529c6ee5ddf8630b1'
-          echo 'expected ac ffdffedb971e4d9fde0b92ff9cc1322e265ad3a838f286de16671ad3a4ded93c'
-          echo 'expected ad b9fccdd9ea9a64db6deeec7364e16d2016ab78da6ed97136daa8c5fee003ad29'
           cat recallshot-ci/part-*.b64 | tr -d '[:space:]' | base64 --decode > recallshot-source.zip
           echo '58f2348d1363f30c567aa285566d4189aee0dfe0f58d38a3d9293875ded20904  recallshot-source.zip' | sha256sum -c -
           mkdir -p recallshot-android
           unzip -q recallshot-source.zip -d recallshot-android
+          if [ -d recallshot-ci/overrides ]; then cp -R recallshot-ci/overrides/. recallshot-android/; fi
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -47,8 +40,16 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android 37
-        run: sdkmanager 'platforms;android-37' 'build-tools;35.0.0'
+      - name: Install Android 17 preview SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --channel=3 'platforms;android-37' 'build-tools;37.0.0' || {
+            echo 'API 37 packages not available by numeric id. Candidate packages:'
+            sdkmanager --list --channel=3 | grep -Ei 'android-37|cinnamon|build-tools;37' || true
+            exit 1
+          }
 
       - name: Setup Gradle 9.5
         uses: gradle/actions/setup-gradle@v4
@@ -57,27 +58,38 @@ jobs:
 
       - name: Unit tests
         working-directory: recallshot-android
-        run: gradle --no-daemon testDebugUnitTest
+        run: gradle --no-daemon testDebugUnitTest --stacktrace
 
       - name: Android lint
         working-directory: recallshot-android
-        run: gradle --no-daemon lintDebug
+        run: gradle --no-daemon lintDebug --stacktrace
 
       - name: Build debug APK
         working-directory: recallshot-android
-        run: gradle --no-daemon assembleDebug
+        run: gradle --no-daemon assembleDebug --stacktrace
 
-      - name: Verify APK signature and checksum
+      - name: Verify APK metadata, signature and checksum
         working-directory: recallshot-android
+        shell: bash
         run: |
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk
-          sha256sum app/build/outputs/apk/debug/app-debug.apk
+          set -euo pipefail
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          "$AAPT" dump badging "$APK" | tee apk-badging.txt
+          grep -q "package: name='com.recallshot.app'" apk-badging.txt
+          grep -q "targetSdkVersion:'37'" apk-badging.txt
+          "$APKSIGNER" verify --verbose "$APK"
+          sha256sum "$APK" | tee apk-sha256.txt
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: RecallShot-0.1.0-debug-APK
-          path: recallshot-android/app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            recallshot-android/app/build/outputs/apk/debug/app-debug.apk
+            recallshot-android/apk-badging.txt
+            recallshot-android/apk-sha256.txt
           if-no-files-found: error
 
       - name: Upload reports on failure
