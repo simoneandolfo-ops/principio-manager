@@ -76,16 +76,15 @@ class OcrProcessor(private val context: Context) {
         }
 
         val options = BitmapFactory.Options().apply {
-            inJustDecodeBounds = false
             inSampleSize = sample.coerceAtLeast(1)
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
 
         try {
-            return resolver.openInputStream(uri)?.use { stream ->
+            val decoded = resolver.openInputStream(uri)?.use { stream ->
                 BitmapFactory.decodeStream(stream, null, options)
             } ?: throw OcrSourceException("Unable to reopen image source")
-                ?: throw OcrDecodeException("Bitmap decoder returned null")
+            return decoded ?: throw OcrDecodeException("Bitmap decoder returned null")
         } catch (e: SecurityException) {
             throw e
         } catch (e: OcrSourceException) {
@@ -104,9 +103,6 @@ class OcrProcessor(private val context: Context) {
     }
 
     companion object {
-        // A modern phone screenshot is commonly 1080x2400 or larger. Capping the longest
-        // side keeps OCR detail while preventing thousands of full-resolution bitmaps from
-        // putting sustained pressure on the native heap.
         private const val MAX_DIMENSION = 2048
     }
 }
