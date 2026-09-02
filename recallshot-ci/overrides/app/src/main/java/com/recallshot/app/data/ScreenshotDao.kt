@@ -42,18 +42,16 @@ interface ScreenshotDao {
     @Query("UPDATE screenshots SET reminderAt = NULL")
     suspend fun clearAllReminders()
 
-    // 0.2.5: PROCESSING is retryable too. If Android kills the worker while ML Kit
-    // is working on an image, the next worker can safely recover that row.
-    @Query("SELECT * FROM screenshots WHERE ocrStatus IN ('PENDING','ERROR','PROCESSING') ORDER BY importedAt ASC LIMIT :limit")
+    @Query("SELECT * FROM screenshots WHERE ocrStatus = 'PENDING' OR ocrStatus = 'PROCESSING' OR ocrStatus = 'ERROR' OR ocrStatus LIKE 'ERROR_%' ORDER BY importedAt ASC LIMIT :limit")
     suspend fun pendingOcr(limit: Int = 1): List<ScreenshotEntity>
 
-    @Query("SELECT COUNT(*) FROM screenshots WHERE ocrStatus IN ('PENDING','ERROR','PROCESSING')")
+    @Query("SELECT COUNT(*) FROM screenshots WHERE ocrStatus = 'PENDING' OR ocrStatus = 'PROCESSING' OR ocrStatus = 'ERROR' OR ocrStatus LIKE 'ERROR_%'")
     suspend fun retryableOcrCount(): Int
 
     @Query("SELECT COUNT(*) FROM screenshots WHERE ocrStatus = 'DONE'")
     suspend fun doneOcrCount(): Int
 
-    @Query("SELECT COUNT(*) FROM screenshots WHERE ocrStatus IN ('FAILED','PERMISSION')")
+    @Query("SELECT COUNT(*) FROM screenshots WHERE ocrStatus = 'FAILED' OR ocrStatus LIKE 'FAILED_%' OR ocrStatus = 'PERMISSION'")
     suspend fun failedOcrCount(): Int
 
     @Query("SELECT COUNT(*) FROM screenshots")
