@@ -64,15 +64,15 @@ jobs:
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee apk-badging.txt
           grep -q "package: name='com.recallshot.app'" apk-badging.txt
-          grep -q "versionCode='5'" apk-badging.txt
-          grep -q "versionName='0.2.3'" apk-badging.txt
+          grep -q "versionCode='6'" apk-badging.txt
+          grep -q "versionName='0.2.4'" apk-badging.txt
           grep -q "targetSdkVersion:'37'" apk-badging.txt
           "$APKSIGNER" verify --verbose "$APK"
           sha256sum "$APK" | tee apk-sha256.txt
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: RecallShot-0.2.3-stable-ocr-notifications
+          name: RecallShot-0.2.4-bulk-scan-sync
           path: |
             recallshot-android/app/build/outputs/apk/debug/app-debug.apk
             recallshot-android/apk-badging.txt
