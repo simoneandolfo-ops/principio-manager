@@ -8,7 +8,9 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.recallshot.app.data.RecallShotDatabase
+import com.recallshot.app.ocr.OcrDecodeException
 import com.recallshot.app.ocr.OcrProcessor
+import com.recallshot.app.ocr.OcrSourceException
 import com.recallshot.app.settings.SettingsRepository
 import com.recallshot.core.LocalClassifier
 import com.recallshot.core.MetadataExtractor
@@ -27,8 +29,6 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
         val startedAt = SystemClock.elapsedRealtime()
 
         while (!isStopped && SystemClock.elapsedRealtime() - startedAt < MAX_RUN_MS) {
-            // Intentionally ONE row at a time. ML Kit must finish and the DB must be
-            // updated before the next screenshot is even fetched.
             val entity = dao.pendingOcr(1).firstOrNull()
 
             if (entity == null) {
@@ -49,9 +49,6 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
 
             try {
                 val text = processor.read(entity)
-
-                // A zero-text result is valid for image-only screenshots. It is not an OCR
-                // exception, so we finish the row instead of hammering ML Kit forever.
                 val title = TitleGenerator.generate(text, entity.displayName.ifBlank { "Screenshot" })
                 val classification = classifier.classify(title, text, entity.sourceApp)
                 val meta = MetadataExtractor.extract(text)
@@ -72,20 +69,18 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
                         ocrStatus = "DONE"
                     )
                 )
-
-                // Deliberate throttle: on a 5k library we prefer stable OCR throughput to
-                // racing through MediaStore and ML Kit. This also gives Android time to
-                // release image/native resources between recognitions.
                 delay(BETWEEN_IMAGES_MS)
             } catch (_: SecurityException) {
                 dao.update(entity.copy(ocrStatus = "PERMISSION"))
                 delay(ERROR_BACKOFF_MS)
+            } catch (_: OcrDecodeException) {
+                dao.update(entity.copy(ocrStatus = failureStatus(originalStatus, "DECODE")))
+                delay(ERROR_BACKOFF_MS)
+            } catch (_: OcrSourceException) {
+                dao.update(entity.copy(ocrStatus = failureStatus(originalStatus, "SOURCE")))
+                delay(ERROR_BACKOFF_MS)
             } catch (_: Throwable) {
-                // PENDING/PROCESSING gets one later recovery attempt. An item that had
-                // already failed once becomes terminal FAILED, so a corrupt file cannot
-                // monopolize the sequential queue.
-                val nextStatus = if (originalStatus == "ERROR") "FAILED" else "ERROR"
-                dao.update(entity.copy(ocrStatus = nextStatus))
+                dao.update(entity.copy(ocrStatus = failureStatus(originalStatus, "OCR")))
                 delay(ERROR_BACKOFF_MS)
             }
         }
@@ -98,12 +93,17 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
         return Result.success()
     }
 
+    private fun failureStatus(originalStatus: String, type: String): String {
+        val alreadyFailedOnce = originalStatus == "ERROR" || originalStatus.startsWith("ERROR_")
+        return if (alreadyFailedOnce) "FAILED_$type" else "ERROR_$type"
+    }
+
     companion object {
-        const val UNIQUE_NAME = "recallshot-ocr-queue-v5"
+        const val UNIQUE_NAME = "recallshot-ocr-queue-v6"
         private const val MAX_RUN_MS = 7 * 60 * 1000L
         private const val EMPTY_QUEUE_WAIT_MS = 1200L
-        private const val BETWEEN_IMAGES_MS = 350L
-        private const val ERROR_BACKOFF_MS = 900L
+        private const val BETWEEN_IMAGES_MS = 450L
+        private const val ERROR_BACKOFF_MS = 1200L
 
         fun start(context: Context) {
             val request = OneTimeWorkRequestBuilder<OcrQueueWorker>().build()
