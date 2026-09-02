@@ -1,4 +1,4 @@
-name: Build RecallShot Play Release
+name: Build RecallShot 0.2.7 Test APK
 
 on:
   push:
@@ -51,36 +51,32 @@ jobs:
       - name: Android lint
         working-directory: recallshot-android
         run: gradle --no-daemon lintDebug --stacktrace
-      - name: Build optimized release bundle
-        working-directory: recallshot-android
-        run: gradle --no-daemon bundleRelease --stacktrace
-      - name: Build debug regression APK
+      - name: Build debug APK
         working-directory: recallshot-android
         run: gradle --no-daemon assembleDebug --stacktrace
-      - name: Verify metadata and checksums
+      - name: Verify APK metadata, signature and checksum
         working-directory: recallshot-android
         shell: bash
         run: |
           set -euo pipefail
           APK='app/build/outputs/apk/debug/app-debug.apk'
-          AAB='app/build/outputs/bundle/release/app-release.aab'
           AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee apk-badging.txt
           grep -q "package: name='com.recallshot.app'" apk-badging.txt
-          grep -q "versionCode='8'" apk-badging.txt
-          grep -q "versionName='0.2.6'" apk-badging.txt
+          grep -q "versionCode='9'" apk-badging.txt
+          grep -q "versionName='0.2.7'" apk-badging.txt
           grep -q "targetSdkVersion:'37'" apk-badging.txt
-          test -s "$AAB"
-          sha256sum "$APK" "$AAB" | tee release-sha256.txt
-          ls -lh "$APK" "$AAB" | tee release-sizes.txt
-      - name: Upload Play release artifacts
+          "$APKSIGNER" verify --verbose "$APK"
+          sha256sum "$APK" | tee apk-sha256.txt
+          ls -lh "$APK" | tee apk-size.txt
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: RecallShot-0.2.6-play-release-unsigned
+          name: RecallShot-0.2.7-safe-decoder-test
           path: |
-            recallshot-android/app/build/outputs/bundle/release/app-release.aab
             recallshot-android/app/build/outputs/apk/debug/app-debug.apk
             recallshot-android/apk-badging.txt
-            recallshot-android/release-sha256.txt
-            recallshot-android/release-sizes.txt
+            recallshot-android/apk-sha256.txt
+            recallshot-android/apk-size.txt
           if-no-files-found: error
