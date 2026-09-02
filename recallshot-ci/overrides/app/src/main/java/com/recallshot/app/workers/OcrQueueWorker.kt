@@ -13,6 +13,7 @@ import com.recallshot.app.settings.SettingsRepository
 import com.recallshot.core.LocalClassifier
 import com.recallshot.core.MetadataExtractor
 import com.recallshot.core.TitleGenerator
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.yield
 
@@ -28,13 +29,24 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
 
         while (!isStopped && SystemClock.elapsedRealtime() - startedAt < MAX_RUN_MS) {
             val batch = dao.pendingOcr(BATCH_SIZE)
-            if (batch.isEmpty()) return Result.success()
+
+            if (batch.isEmpty()) {
+                // During a 5k+ full scan the producer can temporarily have no rows ready
+                // while it is still inserting the next group. Do not interpret that gap as
+                // "cataloguing finished". Stay alive until the producer explicitly finishes.
+                if (BulkScanState.isActive(applicationContext)) {
+                    delay(EMPTY_QUEUE_WAIT_MS)
+                    continue
+                }
+                return Result.success()
+            }
 
             for (entity in batch) {
                 if (isStopped) {
                     appendContinuation(applicationContext)
                     return Result.success()
                 }
+
                 try {
                     val text = processor.read(entity)
                     val title = TitleGenerator.generate(text, entity.displayName.ifBlank { "Screenshot" })
@@ -60,9 +72,8 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
                 } catch (_: SecurityException) {
                     dao.update(entity.copy(ocrStatus = "PERMISSION"))
                 } catch (_: Throwable) {
-                    // ERROR from older builds gets exactly one recovery attempt here.
-                    // A fresh PENDING item gets one retry on the next pass. If it fails
-                    // again it becomes FAILED so one corrupt image cannot block 5000 others.
+                    // Fresh PENDING gets one controlled retry. Existing ERROR gets a final
+                    // attempt, then becomes FAILED so one corrupt image never blocks the queue.
                     val nextStatus = if (entity.ocrStatus == "ERROR") "FAILED" else "ERROR"
                     dao.update(entity.copy(ocrStatus = nextStatus))
                 }
@@ -70,22 +81,40 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
             }
         }
 
-        if (settingsRepo.settings.first().runOcrAutomatically && dao.retryableOcrCount() > 0) {
+        // WorkManager jobs should stay bounded. If either the producer is still scanning
+        // or retryable rows still exist, chain another worker immediately.
+        if (settingsRepo.settings.first().runOcrAutomatically &&
+            (BulkScanState.isActive(applicationContext) || dao.retryableOcrCount() > 0)
+        ) {
             appendContinuation(applicationContext)
         }
         return Result.success()
     }
 
     companion object {
-        const val UNIQUE_NAME = "recallshot-ocr-queue-v3"
+        const val UNIQUE_NAME = "recallshot-ocr-queue-v4"
         private const val BATCH_SIZE = 48
         private const val MAX_RUN_MS = 7 * 60 * 1000L
+        private const val EMPTY_QUEUE_WAIT_MS = 1200L
 
         fun start(context: Context) {
             val request = OneTimeWorkRequestBuilder<OcrQueueWorker>().build()
             WorkManager.getInstance(context).enqueueUniqueWork(
                 UNIQUE_NAME,
                 ExistingWorkPolicy.KEEP,
+                request
+            )
+        }
+
+        /**
+         * Used when a full scan completes. REPLACE is deliberate: the final producer event
+         * must always create a fresh consumer even if an older unique worker is still winding down.
+         */
+        fun restartAfterFullScan(context: Context) {
+            val request = OneTimeWorkRequestBuilder<OcrQueueWorker>().build()
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                UNIQUE_NAME,
+                ExistingWorkPolicy.REPLACE,
                 request
             )
         }
