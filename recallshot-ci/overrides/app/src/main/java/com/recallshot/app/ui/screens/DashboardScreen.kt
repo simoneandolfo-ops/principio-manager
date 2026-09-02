@@ -27,23 +27,29 @@ private val categories = listOf("PRODUCT","PLACE","TRAVEL","CONVERSATION","DOCUM
 
 @Composable
 fun DashboardScreen(all: List<ScreenshotEntity>, autoOcrEnabled: Boolean, visible: List<ScreenshotEntity>, reminders: List<ScreenshotEntity>, query: String, onQuery: (String) -> Unit, onCategory: (String) -> Unit, onOpen: (Long, List<ScreenshotEntity>) -> Unit, onFavorite: (ScreenshotEntity) -> Unit, onImport: () -> Unit) {
-    val waiting = all.count { it.ocrStatus == "PENDING" || it.ocrStatus == "ERROR" || it.ocrStatus == "PROCESSING" }
-    val processing = all.count { it.ocrStatus == "PROCESSING" }
+    val waiting = all.count { it.ocrStatus == "PENDING" || it.ocrStatus == "PROCESSING" || it.ocrStatus == "ERROR" || it.ocrStatus.startsWith("ERROR_") }
     val done = all.count { it.ocrStatus == "DONE" }
-    val failed = all.count { it.ocrStatus == "FAILED" || it.ocrStatus == "PERMISSION" }
+    val terminalErrors = all.count { it.ocrStatus == "FAILED" || it.ocrStatus.startsWith("FAILED_") || it.ocrStatus == "PERMISSION" }
+    val decodeErrors = all.count { it.ocrStatus.endsWith("_DECODE") }
+    val sourceErrors = all.count { it.ocrStatus.endsWith("_SOURCE") }
+    val ocrErrors = all.count { it.ocrStatus.endsWith("_OCR") || it.ocrStatus == "ERROR" || it.ocrStatus == "FAILED" }
+    val permissionErrors = all.count { it.ocrStatus == "PERMISSION" }
     val categorized = all.count { it.ocrStatus == "DONE" && it.category != "OTHER" }
     val other = all.count { it.ocrStatus == "DONE" && it.category == "OTHER" }
 
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Column { Text("RecallShot", style = MaterialTheme.typography.headlineMedium); Text("La memoria dei tuoi screenshot", color = MaterialTheme.colorScheme.secondary) }; FilledTonalIconButton(onClick = onImport) { Icon(Icons.Outlined.AddPhotoAlternate, "Importa") } } }
 
-        if (autoOcrEnabled && (waiting > 0 || processing > 0)) item {
+        if (autoOcrEnabled && (waiting > 0 || terminalErrors > 0)) item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                    Text("Classificazione OCR in corso", style = MaterialTheme.typography.titleSmall)
-                    Text("Completati $done · In coda $waiting · Errori $failed")
+                    if (waiting > 0) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text(if (waiting > 0) "Classificazione OCR in corso" else "Classificazione OCR completata", style = MaterialTheme.typography.titleSmall)
+                    Text("Completati $done · In coda $waiting · Errori $terminalErrors")
                     Text("Categorie $categorized · Altro $other", color = MaterialTheme.colorScheme.secondary)
+                    if (decodeErrors + sourceErrors + ocrErrors + permissionErrors > 0) {
+                        Text("Diagnostica: decodifica $decodeErrors · file $sourceErrors · OCR $ocrErrors · permessi $permissionErrors", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                    }
                 }
             }
         }
