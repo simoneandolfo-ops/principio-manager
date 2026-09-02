@@ -15,7 +15,6 @@ import com.recallshot.core.MetadataExtractor
 import com.recallshot.core.TitleGenerator
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.yield
 
 class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
@@ -28,12 +27,11 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
         val startedAt = SystemClock.elapsedRealtime()
 
         while (!isStopped && SystemClock.elapsedRealtime() - startedAt < MAX_RUN_MS) {
-            val batch = dao.pendingOcr(BATCH_SIZE)
+            // Intentionally ONE row at a time. ML Kit must finish and the DB must be
+            // updated before the next screenshot is even fetched.
+            val entity = dao.pendingOcr(1).firstOrNull()
 
-            if (batch.isEmpty()) {
-                // During a 5k+ full scan the producer can temporarily have no rows ready
-                // while it is still inserting the next group. Do not interpret that gap as
-                // "cataloguing finished". Stay alive until the producer explicitly finishes.
+            if (entity == null) {
                 if (BulkScanState.isActive(applicationContext)) {
                     delay(EMPTY_QUEUE_WAIT_MS)
                     continue
@@ -41,48 +39,57 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
                 return Result.success()
             }
 
-            for (entity in batch) {
-                if (isStopped) {
-                    appendContinuation(applicationContext)
-                    return Result.success()
-                }
+            if (isStopped) {
+                appendContinuation(applicationContext)
+                return Result.success()
+            }
 
-                try {
-                    val text = processor.read(entity)
-                    val title = TitleGenerator.generate(text, entity.displayName.ifBlank { "Screenshot" })
-                    val classification = classifier.classify(title, text, entity.sourceApp)
-                    val meta = MetadataExtractor.extract(text)
-                    val description = buildList {
-                        meta.prices.firstOrNull()?.let { add(it) }
-                        meta.flightCodes.firstOrNull()?.let { add("Volo $it") }
-                        meta.urls.firstOrNull()?.let { add(it) }
-                        meta.dates.firstOrNull()?.let { add(it) }
-                    }.joinToString(" · ").take(180)
+            val originalStatus = entity.ocrStatus
+            dao.update(entity.copy(ocrStatus = "PROCESSING"))
 
-                    dao.update(
-                        entity.copy(
-                            title = title,
-                            description = description,
-                            ocrText = text,
-                            category = classification.category.name,
-                            confidence = classification.confidence,
-                            ocrStatus = "DONE"
-                        )
+            try {
+                val text = processor.read(entity)
+
+                // A zero-text result is valid for image-only screenshots. It is not an OCR
+                // exception, so we finish the row instead of hammering ML Kit forever.
+                val title = TitleGenerator.generate(text, entity.displayName.ifBlank { "Screenshot" })
+                val classification = classifier.classify(title, text, entity.sourceApp)
+                val meta = MetadataExtractor.extract(text)
+                val description = buildList {
+                    meta.prices.firstOrNull()?.let { add(it) }
+                    meta.flightCodes.firstOrNull()?.let { add("Volo $it") }
+                    meta.urls.firstOrNull()?.let { add(it) }
+                    meta.dates.firstOrNull()?.let { add(it) }
+                }.joinToString(" · ").take(180)
+
+                dao.update(
+                    entity.copy(
+                        title = title,
+                        description = description,
+                        ocrText = text,
+                        category = classification.category.name,
+                        confidence = classification.confidence,
+                        ocrStatus = "DONE"
                     )
-                } catch (_: SecurityException) {
-                    dao.update(entity.copy(ocrStatus = "PERMISSION"))
-                } catch (_: Throwable) {
-                    // Fresh PENDING gets one controlled retry. Existing ERROR gets a final
-                    // attempt, then becomes FAILED so one corrupt image never blocks the queue.
-                    val nextStatus = if (entity.ocrStatus == "ERROR") "FAILED" else "ERROR"
-                    dao.update(entity.copy(ocrStatus = nextStatus))
-                }
-                yield()
+                )
+
+                // Deliberate throttle: on a 5k library we prefer stable OCR throughput to
+                // racing through MediaStore and ML Kit. This also gives Android time to
+                // release image/native resources between recognitions.
+                delay(BETWEEN_IMAGES_MS)
+            } catch (_: SecurityException) {
+                dao.update(entity.copy(ocrStatus = "PERMISSION"))
+                delay(ERROR_BACKOFF_MS)
+            } catch (_: Throwable) {
+                // PENDING/PROCESSING gets one later recovery attempt. An item that had
+                // already failed once becomes terminal FAILED, so a corrupt file cannot
+                // monopolize the sequential queue.
+                val nextStatus = if (originalStatus == "ERROR") "FAILED" else "ERROR"
+                dao.update(entity.copy(ocrStatus = nextStatus))
+                delay(ERROR_BACKOFF_MS)
             }
         }
 
-        // WorkManager jobs should stay bounded. If either the producer is still scanning
-        // or retryable rows still exist, chain another worker immediately.
         if (settingsRepo.settings.first().runOcrAutomatically &&
             (BulkScanState.isActive(applicationContext) || dao.retryableOcrCount() > 0)
         ) {
@@ -92,10 +99,11 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
     }
 
     companion object {
-        const val UNIQUE_NAME = "recallshot-ocr-queue-v4"
-        private const val BATCH_SIZE = 48
+        const val UNIQUE_NAME = "recallshot-ocr-queue-v5"
         private const val MAX_RUN_MS = 7 * 60 * 1000L
         private const val EMPTY_QUEUE_WAIT_MS = 1200L
+        private const val BETWEEN_IMAGES_MS = 350L
+        private const val ERROR_BACKOFF_MS = 900L
 
         fun start(context: Context) {
             val request = OneTimeWorkRequestBuilder<OcrQueueWorker>().build()
@@ -106,10 +114,6 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
             )
         }
 
-        /**
-         * Used when a full scan completes. REPLACE is deliberate: the final producer event
-         * must always create a fresh consumer even if an older unique worker is still winding down.
-         */
         fun restartAfterFullScan(context: Context) {
             val request = OneTimeWorkRequestBuilder<OcrQueueWorker>().build()
             WorkManager.getInstance(context).enqueueUniqueWork(
