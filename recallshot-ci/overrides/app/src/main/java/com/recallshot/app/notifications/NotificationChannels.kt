@@ -8,6 +8,7 @@ import android.os.Build
 object NotificationChannels {
     const val REMINDERS = "recallshot_reminders"
     const val SCREENSHOTS = "recallshot_screenshots_v2"
+    const val OCR_BACKGROUND = "recallshot_ocr_background_v1"
 
     fun create(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -20,6 +21,14 @@ object NotificationChannels {
         manager.createNotificationChannel(
             NotificationChannel(SCREENSHOTS, "Nuovi screenshot", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "Avvisi discreti quando RecallShot rileva un nuovo screenshot"
+                setSound(null, null)
+                enableVibration(false)
+                setShowBadge(false)
+            }
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(OCR_BACKGROUND, "Classificazione in background", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Mantiene attiva la classificazione OCR quando RecallShot non è in primo piano"
                 setSound(null, null)
                 enableVibration(false)
                 setShowBadge(false)
