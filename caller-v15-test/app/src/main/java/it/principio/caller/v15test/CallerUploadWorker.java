@@ -13,13 +13,17 @@ public final class CallerUploadWorker extends Worker {
     while (true) {
       List<PendingCallStore.Item> q = PendingCallStore.all(c);
       if (q.isEmpty()) return Result.success();
+      String phone = q.get(0).phone;
       try {
-        ApiClient.sendIncoming(c, q.get(0).phone);
+        ApiClient.sendIncoming(c, phone);
+        Diagnostics.sent(c, phone);
         PendingCallStore.removeFirst(c);
       } catch (ApiClient.ApiException e) {
+        Diagnostics.error(c, e.getClass().getSimpleName()+": "+e.getMessage());
         if (e.authError) return Result.success();
         return Result.retry();
       } catch (Exception e) {
+        Diagnostics.error(c, e.getClass().getSimpleName()+": "+e.getMessage());
         return Result.retry();
       }
     }
