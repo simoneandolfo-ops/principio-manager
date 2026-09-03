@@ -1,0 +1,17 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'it.principio.caller.v15test'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'it.principio.caller.v15test'
+        minSdk 29
+        targetSdk 36
+        versionCode 15
+        versionName '1.5-test'
+    }
+}
+
+dependencies {
+    implementation 'androidx.work:work-runtime:2.10.3'
+}
