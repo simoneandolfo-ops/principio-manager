@@ -1,4 +1,4 @@
-name: Build RecallShot 0.2.7 Test APK
+name: Build RecallShot 0.2.8 Test APK
 
 on:
   push:
@@ -64,8 +64,8 @@ jobs:
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee apk-badging.txt
           grep -q "package: name='com.recallshot.app'" apk-badging.txt
-          grep -q "versionCode='9'" apk-badging.txt
-          grep -q "versionName='0.2.7'" apk-badging.txt
+          grep -q "versionCode='10'" apk-badging.txt
+          grep -q "versionName='0.2.8'" apk-badging.txt
           grep -q "targetSdkVersion:'37'" apk-badging.txt
           "$APKSIGNER" verify --verbose "$APK"
           sha256sum "$APK" | tee apk-sha256.txt
@@ -73,7 +73,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: RecallShot-0.2.7-safe-decoder-test
+          name: RecallShot-0.2.8-mediastore-access-test
           path: |
             recallshot-android/app/build/outputs/apk/debug/app-debug.apk
             recallshot-android/apk-badging.txt
