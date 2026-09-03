@@ -1,0 +1,33 @@
+name: Caller V1.5 Test APK
+on:
+  push:
+    branches: [caller-v15-test]
+    paths:
+      - 'caller-v15-test/**'
+      - '.github/workflows/caller-v15-test.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Build debug APK
+        working-directory: caller-v15-test
+        run: gradle assembleDebug --stacktrace
+      - name: Rename APK
+        run: cp caller-v15-test/app/build/outputs/apk/debug/app-debug.apk Principio-Caller-V1.5-TEST-Session-Fix.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Principio-Caller-V1.5-TEST-Session-Fix
+          path: Principio-Caller-V1.5-TEST-Session-Fix.apk
+          retention-days: 14
