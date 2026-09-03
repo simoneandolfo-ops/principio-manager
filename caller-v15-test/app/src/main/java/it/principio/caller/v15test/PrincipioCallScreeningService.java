@@ -18,7 +18,9 @@ public final class PrincipioCallScreeningService extends CallScreeningService {
     Uri h=details.getHandle();
     String phone=h==null?"":h.getSchemeSpecificPart();
     if(phone==null||phone.trim().isEmpty()) return;
-    PendingCallStore.add(getApplicationContext(),phone.trim());
+    phone=phone.trim();
+    Diagnostics.intercepted(getApplicationContext(),phone);
+    PendingCallStore.add(getApplicationContext(),phone);
     Constraints constraints=new Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build();
     OneTimeWorkRequest req=new OneTimeWorkRequest.Builder(CallerUploadWorker.class).setConstraints(constraints).build();
     WorkManager.getInstance(getApplicationContext()).enqueue(req);
