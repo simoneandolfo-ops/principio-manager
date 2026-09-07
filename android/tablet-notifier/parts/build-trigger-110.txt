@@ -1,1 +1,1 @@
-realtime-fcm-1.1.0 build after chunked source reconstruction
+realtime-fcm-1.1.1 Android 11 compatibility hotfix build
