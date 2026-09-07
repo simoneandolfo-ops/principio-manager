@@ -40,10 +40,10 @@ jobs:
       - name: Reconstruct and extract Android source
         working-directory: android/tablet-notifier
         run: |
-          rm -rf source Principio_Tablet_Notifier_Android_1.0.1_SOURCE.zip
-          base64 --decode Principio_Tablet_Notifier_Android_1.0.1_SOURCE.zip.b64 > Principio_Tablet_Notifier_Android_1.0.1_SOURCE.zip
+          rm -rf source Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip
+          base64 --decode Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip.b64 > Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip
           mkdir source
-          unzip -q Principio_Tablet_Notifier_Android_1.0.1_SOURCE.zip -d source
+          unzip -q Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip -d source
 
       - name: Build debug APK
         working-directory: android/tablet-notifier/source
@@ -52,13 +52,13 @@ jobs:
       - name: Verify and prepare APK
         run: |
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose android/tablet-notifier/source/app/build/outputs/apk/debug/app-debug.apk
-          cp android/tablet-notifier/source/app/build/outputs/apk/debug/app-debug.apk Principio_Tablet_Notifier_1.0.1.apk
-          sha256sum Principio_Tablet_Notifier_1.0.1.apk
+          cp android/tablet-notifier/source/app/build/outputs/apk/debug/app-debug.apk Principio_Tablet_Notifier_1.1.0.apk
+          sha256sum Principio_Tablet_Notifier_1.1.0.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Principio_Tablet_Notifier_1.0.1_APK
-          path: Principio_Tablet_Notifier_1.0.1.apk
+          name: Principio_Tablet_Notifier_1.1.0_APK
+          path: Principio_Tablet_Notifier_1.1.0.apk
           if-no-files-found: error
           retention-days: 30
