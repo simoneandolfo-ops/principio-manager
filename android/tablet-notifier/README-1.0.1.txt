@@ -1,0 +1,1 @@
+Principio Tablet Notifier 1.0.1 source is stored as Principio_Tablet_Notifier_Android_1.0.1_SOURCE.zip on the build branch for APK generation.
