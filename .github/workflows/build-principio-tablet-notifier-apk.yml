@@ -46,6 +46,7 @@ jobs:
           unzip -t Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip
           mkdir source
           unzip -q Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip -d source
+          printf 'android.useAndroidX=true\nandroid.enableJetifier=true\n' > source/gradle.properties
 
       - name: Build debug APK
         working-directory: android/tablet-notifier/source
