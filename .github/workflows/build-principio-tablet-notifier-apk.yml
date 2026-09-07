@@ -37,16 +37,26 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Reconstruct and extract Android source
+      - name: Reconstruct and patch Android 11 compatibility
         working-directory: android/tablet-notifier
         run: |
-          rm -rf source Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip.b64
-          cat parts/part*.b64 > Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip.b64
-          base64 --decode Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip.b64 > Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip
-          unzip -t Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip
+          rm -rf source Principio_Tablet_Notifier_Android_1.1.1_SOURCE.zip Principio_Tablet_Notifier_Android_1.1.1_SOURCE.zip.b64
+          cat parts/part*.b64 > Principio_Tablet_Notifier_Android_1.1.1_SOURCE.zip.b64
+          base64 --decode Principio_Tablet_Notifier_Android_1.1.1_SOURCE.zip.b64 > Principio_Tablet_Notifier_Android_1.1.1_SOURCE.zip
+          unzip -t Principio_Tablet_Notifier_Android_1.1.1_SOURCE.zip
           mkdir source
-          unzip -q Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip -d source
+          unzip -q Principio_Tablet_Notifier_Android_1.1.1_SOURCE.zip -d source
           printf 'android.useAndroidX=true\nandroid.enableJetifier=true\n' > source/gradle.properties
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('source/app/src/main/java/it/principio/managernotifier/ApiClient.java')
+          s=p.read_text()
+          s=s.replace('return b.toString(StandardCharsets.UTF_8);','return b.toString("UTF-8");')
+          p.write_text(s)
+          bg=Path('source/app/build.gradle')
+          s=bg.read_text().replace('versionCode 10','versionCode 11').replace('versionName "1.1.0"','versionName "1.1.1"')
+          bg.write_text(s)
+          PY
 
       - name: Build debug APK
         working-directory: android/tablet-notifier/source
@@ -55,13 +65,13 @@ jobs:
       - name: Verify and prepare APK
         run: |
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose android/tablet-notifier/source/app/build/outputs/apk/debug/app-debug.apk
-          cp android/tablet-notifier/source/app/build/outputs/apk/debug/app-debug.apk Principio_Tablet_Notifier_1.1.0.apk
-          sha256sum Principio_Tablet_Notifier_1.1.0.apk
+          cp android/tablet-notifier/source/app/build/outputs/apk/debug/app-debug.apk Principio_Tablet_Notifier_1.1.1.apk
+          sha256sum Principio_Tablet_Notifier_1.1.1.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Principio_Tablet_Notifier_1.1.0_APK
-          path: Principio_Tablet_Notifier_1.1.0.apk
+          name: Principio_Tablet_Notifier_1.1.1_APK
+          path: Principio_Tablet_Notifier_1.1.1.apk
           if-no-files-found: error
           retention-days: 30
