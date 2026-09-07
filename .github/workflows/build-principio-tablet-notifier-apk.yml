@@ -37,10 +37,11 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Extract Android source
+      - name: Reconstruct and extract Android source
         working-directory: android/tablet-notifier
         run: |
-          rm -rf source
+          rm -rf source Principio_Tablet_Notifier_Android_1.0.1_SOURCE.zip
+          base64 --decode Principio_Tablet_Notifier_Android_1.0.1_SOURCE.zip.b64 > Principio_Tablet_Notifier_Android_1.0.1_SOURCE.zip
           mkdir source
           unzip -q Principio_Tablet_Notifier_Android_1.0.1_SOURCE.zip -d source
 
