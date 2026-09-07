@@ -40,8 +40,10 @@ jobs:
       - name: Reconstruct and extract Android source
         working-directory: android/tablet-notifier
         run: |
-          rm -rf source Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip
+          rm -rf source Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip.b64
+          cat parts/part*.b64 > Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip.b64
           base64 --decode Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip.b64 > Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip
+          unzip -t Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip
           mkdir source
           unzip -q Principio_Tablet_Notifier_Android_1.1.0_SOURCE.zip -d source
 
