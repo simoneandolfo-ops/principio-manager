@@ -30,7 +30,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleFavorite(item: ScreenshotEntity) = viewModelScope.launch { repo.setFavorite(item.id, !item.isFavorite) }
     fun retryOcr(id: Long) { repo.enqueueOcr(id, force = true) }
     fun processPendingOcr() = viewModelScope.launch { repo.enqueuePendingOcr() }
-    fun save(item: ScreenshotEntity, title: String, note: String, category: String) = viewModelScope.launch { repo.edit(item.id, title.trim().ifBlank { "Screenshot" }, note.trim(), category) }
+    fun save(item: ScreenshotEntity, title: String, note: String, category: String) = viewModelScope.launch {
+        repo.edit(item, title.trim().ifBlank { "Screenshot" }, note.trim(), category)
+    }
     fun delete(id: Long) = viewModelScope.launch { ReminderScheduler.cancel(getApplication(), id); repo.delete(id) }
     fun deleteOriginalLegacy(id: Long) = viewModelScope.launch { ReminderScheduler.cancel(getApplication(), id); repo.deleteOriginalLegacy(id) }
     fun disableAllReminders() = viewModelScope.launch { ReminderScheduler.cancelAll(getApplication()); repo.clearAllReminders() }
