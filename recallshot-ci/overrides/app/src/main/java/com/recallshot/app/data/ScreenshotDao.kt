@@ -51,6 +51,9 @@ interface ScreenshotDao {
     @Query("SELECT * FROM screenshots WHERE id > :afterId AND ocrStatus = 'DONE' AND (category = 'OTHER' OR confidence < :maxConfidence) ORDER BY id ASC LIMIT :limit")
     suspend fun secondPassCandidates(afterId: Long, maxConfidence: Double = 0.78, limit: Int = 40): List<ScreenshotEntity>
 
+    @Query("SELECT COALESCE(MAX(id), 0) FROM screenshots")
+    suspend fun maxId(): Long
+
     @Query("SELECT COUNT(*) FROM screenshots WHERE ocrStatus = 'PENDING' OR ocrStatus = 'PROCESSING' OR ocrStatus = 'ERROR' OR ocrStatus LIKE 'ERROR_%'")
     suspend fun retryableOcrCount(): Int
 
