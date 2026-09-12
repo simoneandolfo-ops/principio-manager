@@ -26,7 +26,6 @@ import com.recallshot.app.MainViewModel
 import com.recallshot.app.data.ScreenshotEntity
 import com.recallshot.app.permissions.MediaPermissions
 import com.recallshot.app.settings.AppSettings
-import com.recallshot.app.ui.components.categoryLabel
 
 @Composable
 fun AppRoot(vm: MainViewModel, settings: AppSettings, onSetting: (String, Boolean) -> Unit, openId: Long?, onConsumedOpenId: () -> Unit) {
@@ -130,7 +129,7 @@ fun AppRoot(vm: MainViewModel, settings: AppSettings, onSetting: (String, Boolea
         BackHandler { galleryCategory = null }
         val catItems = all.filter { it.category == cat }
         GalleryGridScreen(
-            categoryLabel(cat),
+            recallCategoryLabel(cat),
             catItems,
             onBack = { galleryCategory = null },
             onOpen = { openViewer(it, catItems) }
