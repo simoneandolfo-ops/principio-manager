@@ -70,13 +70,14 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
                 val title = TitleGenerator.generate(text, entity.displayName.ifBlank { "Screenshot" })
                 val textClassification = classifier.classify(title, text, entity.sourceApp)
 
-                // Preserve classifications that already work well. Visual analysis is a
-                // second-stage rescue path for items that text/OCR would otherwise leave in OTHER.
                 val visual = if (textClassification.category.name == "OTHER") {
                     visualClassifier.classify(entity, text)
                 } else null
                 val finalCategory = visual?.category ?: textClassification.category.name
-                val finalConfidence = maxOf(textClassification.confidence, visual?.confidence ?: 0f)
+                val finalConfidence = maxOf(
+                    textClassification.confidence,
+                    visual?.confidence?.toDouble() ?: 0.0
+                )
 
                 val meta = MetadataExtractor.extract(text)
                 val description = buildList {
