@@ -36,6 +36,9 @@ interface ScreenshotDao {
     @Query("UPDATE screenshots SET title = :title, note = :note, category = :category WHERE id = :id")
     suspend fun edit(id: Long, title: String, note: String, category: String)
 
+    @Query("UPDATE screenshots SET category = :category, confidence = :confidence WHERE id = :id")
+    suspend fun updateClassification(id: Long, category: String, confidence: Double)
+
     @Query("UPDATE screenshots SET reminderAt = :reminderAt WHERE id = :id")
     suspend fun setReminder(id: Long, reminderAt: Long?)
 
@@ -44,6 +47,9 @@ interface ScreenshotDao {
 
     @Query("SELECT * FROM screenshots WHERE ocrStatus = 'PENDING' OR ocrStatus = 'PROCESSING' OR ocrStatus = 'ERROR' OR ocrStatus LIKE 'ERROR_%' ORDER BY importedAt ASC LIMIT :limit")
     suspend fun pendingOcr(limit: Int = 1): List<ScreenshotEntity>
+
+    @Query("SELECT * FROM screenshots WHERE id > :afterId AND ocrStatus = 'DONE' AND (category = 'OTHER' OR confidence < :maxConfidence) ORDER BY id ASC LIMIT :limit")
+    suspend fun secondPassCandidates(afterId: Long, maxConfidence: Double = 0.78, limit: Int = 40): List<ScreenshotEntity>
 
     @Query("SELECT COUNT(*) FROM screenshots WHERE ocrStatus = 'PENDING' OR ocrStatus = 'PROCESSING' OR ocrStatus = 'ERROR' OR ocrStatus LIKE 'ERROR_%'")
     suspend fun retryableOcrCount(): Int
