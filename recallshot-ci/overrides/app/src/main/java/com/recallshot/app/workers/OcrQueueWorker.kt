@@ -22,6 +22,7 @@ import com.recallshot.app.ocr.OcrDecodeException
 import com.recallshot.app.ocr.OcrProcessor
 import com.recallshot.app.ocr.OcrSourceException
 import com.recallshot.app.settings.SettingsRepository
+import com.recallshot.app.vision.VisualClassifier
 import com.recallshot.core.LocalClassifier
 import com.recallshot.core.MetadataExtractor
 import com.recallshot.core.TitleGenerator
@@ -36,11 +37,9 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
         val dao = RecallShotDatabase.get(applicationContext).screenshotDao()
         val processor = OcrProcessor(applicationContext)
         val classifier = LocalClassifier()
+        val visualClassifier = VisualClassifier(applicationContext)
         val startedAt = SystemClock.elapsedRealtime()
 
-        // Promote the long-running OCR drain to a foreground WorkManager task. The OCR
-        // engine itself is unchanged from 0.2.8; only process lifetime/background
-        // reliability changes here.
         val initialDone = dao.doneOcrCount()
         val initialRemaining = dao.retryableOcrCount()
         setForeground(createForegroundInfo(initialDone, initialRemaining))
@@ -69,7 +68,16 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
             try {
                 val text = processor.read(entity)
                 val title = TitleGenerator.generate(text, entity.displayName.ifBlank { "Screenshot" })
-                val classification = classifier.classify(title, text, entity.sourceApp)
+                val textClassification = classifier.classify(title, text, entity.sourceApp)
+
+                // Preserve classifications that already work well. Visual analysis is a
+                // second-stage rescue path for items that text/OCR would otherwise leave in OTHER.
+                val visual = if (textClassification.category.name == "OTHER") {
+                    visualClassifier.classify(entity, text)
+                } else null
+                val finalCategory = visual?.category ?: textClassification.category.name
+                val finalConfidence = maxOf(textClassification.confidence, visual?.confidence ?: 0f)
+
                 val meta = MetadataExtractor.extract(text)
                 val description = buildList {
                     meta.prices.firstOrNull()?.let { add(it) }
@@ -83,8 +91,8 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
                         title = title,
                         description = description,
                         ocrText = text,
-                        category = classification.category.name,
-                        confidence = classification.confidence,
+                        category = finalCategory,
+                        confidence = finalConfidence,
                         ocrStatus = "DONE"
                     )
                 )
@@ -162,7 +170,7 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
     }
 
     companion object {
-        const val UNIQUE_NAME = "recallshot-ocr-queue-v7"
+        const val UNIQUE_NAME = "recallshot-ocr-queue-v8"
         private const val FOREGROUND_NOTIFICATION_ID = 2902
         private const val NOTIFICATION_UPDATE_EVERY = 5
         private const val MAX_RUN_MS = 7 * 60 * 1000L
