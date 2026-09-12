@@ -19,7 +19,6 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.consume
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -92,9 +91,6 @@ private fun ZoomableScreenshot(item: ScreenshotEntity) {
             .fillMaxSize()
             .clipToBounds()
             .background(MaterialTheme.colorScheme.surface)
-            // Single-finger horizontal gestures at 1x are intentionally NOT consumed:
-            // they belong to HorizontalPager, so search/category results can be swiped.
-            // Two-finger gestures (or panning while zoomed) are consumed by the image.
             .pointerInput(item.id) {
                 awaitEachGesture {
                     do {
