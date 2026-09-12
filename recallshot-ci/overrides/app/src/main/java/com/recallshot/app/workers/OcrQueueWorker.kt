@@ -22,6 +22,7 @@ import com.recallshot.app.ocr.OcrDecodeException
 import com.recallshot.app.ocr.OcrProcessor
 import com.recallshot.app.ocr.OcrSourceException
 import com.recallshot.app.settings.SettingsRepository
+import com.recallshot.app.vision.SmartClassificationEngine
 import com.recallshot.app.vision.VisualClassifier
 import com.recallshot.core.LocalClassifier
 import com.recallshot.core.MetadataExtractor
@@ -36,8 +37,9 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
 
         val dao = RecallShotDatabase.get(applicationContext).screenshotDao()
         val processor = OcrProcessor(applicationContext)
-        val classifier = LocalClassifier()
+        val textClassifier = LocalClassifier()
         val visualClassifier = VisualClassifier(applicationContext)
+        val smartClassifier = SmartClassificationEngine(applicationContext)
         val startedAt = SystemClock.elapsedRealtime()
 
         val initialDone = dao.doneOcrCount()
@@ -54,6 +56,7 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
                     delay(EMPTY_QUEUE_WAIT_MS)
                     continue
                 }
+                ReclassificationWorker.start(applicationContext)
                 return Result.success()
             }
 
@@ -68,15 +71,18 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
             try {
                 val text = processor.read(entity)
                 val title = TitleGenerator.generate(text, entity.displayName.ifBlank { "Screenshot" })
-                val textClassification = classifier.classify(title, text, entity.sourceApp)
+                val textResult = textClassifier.classify(title, text, entity.sourceApp)
 
-                val visual = if (textClassification.category.name == "OTHER") {
-                    visualClassifier.classify(entity, text)
-                } else null
-                val finalCategory = visual?.category ?: textClassification.category.name
-                val finalConfidence = maxOf(
-                    textClassification.confidence,
-                    visual?.confidence?.toDouble() ?: 0.0
+                // Visual analysis is now allowed for all items, but the smart fusion engine
+                // protects strong semantic categories from incidental objects in screenshots.
+                val visual = visualClassifier.classify(entity, text)
+                val decision = smartClassifier.decide(
+                    entity = entity,
+                    title = title,
+                    ocrText = text,
+                    textCategory = textResult.category.name,
+                    textConfidence = textResult.confidence,
+                    visual = visual
                 )
 
                 val meta = MetadataExtractor.extract(text)
@@ -92,8 +98,8 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
                         title = title,
                         description = description,
                         ocrText = text,
-                        category = finalCategory,
-                        confidence = finalConfidence,
+                        category = decision.category,
+                        confidence = decision.confidence,
                         ocrStatus = "DONE"
                     )
                 )
@@ -123,6 +129,8 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
             (BulkScanState.isActive(applicationContext) || dao.retryableOcrCount() > 0)
         ) {
             appendContinuation(applicationContext)
+        } else {
+            ReclassificationWorker.start(applicationContext)
         }
         return Result.success()
     }
@@ -155,11 +163,7 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
             .build()
 
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ForegroundInfo(
-                FOREGROUND_NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            )
+            ForegroundInfo(FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
             ForegroundInfo(FOREGROUND_NOTIFICATION_ID, notification)
         }
@@ -171,7 +175,7 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
     }
 
     companion object {
-        const val UNIQUE_NAME = "recallshot-ocr-queue-v8"
+        const val UNIQUE_NAME = "recallshot-ocr-queue-v9"
         private const val FOREGROUND_NOTIFICATION_ID = 2902
         private const val NOTIFICATION_UPDATE_EVERY = 5
         private const val MAX_RUN_MS = 7 * 60 * 1000L
@@ -181,29 +185,17 @@ class OcrQueueWorker(appContext: Context, params: WorkerParameters) : CoroutineW
 
         fun start(context: Context) {
             val request = OneTimeWorkRequestBuilder<OcrQueueWorker>().build()
-            WorkManager.getInstance(context).enqueueUniqueWork(
-                UNIQUE_NAME,
-                ExistingWorkPolicy.KEEP,
-                request
-            )
+            WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE_NAME, ExistingWorkPolicy.KEEP, request)
         }
 
         fun restartAfterFullScan(context: Context) {
             val request = OneTimeWorkRequestBuilder<OcrQueueWorker>().build()
-            WorkManager.getInstance(context).enqueueUniqueWork(
-                UNIQUE_NAME,
-                ExistingWorkPolicy.REPLACE,
-                request
-            )
+            WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE_NAME, ExistingWorkPolicy.REPLACE, request)
         }
 
         private fun appendContinuation(context: Context) {
             val request = OneTimeWorkRequestBuilder<OcrQueueWorker>().build()
-            WorkManager.getInstance(context).enqueueUniqueWork(
-                UNIQUE_NAME,
-                ExistingWorkPolicy.APPEND_OR_REPLACE,
-                request
-            )
+            WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
         }
     }
 }
