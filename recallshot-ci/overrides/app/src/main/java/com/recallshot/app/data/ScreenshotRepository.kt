@@ -8,16 +8,17 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.recallshot.app.media.MediaStoreScanner
 import com.recallshot.app.media.SharedImageImporter
+import com.recallshot.app.settings.SettingsRepository
+import com.recallshot.app.vision.SmartClassificationEngine
 import com.recallshot.app.workers.OcrQueueWorker
 import com.recallshot.app.workers.OcrWorker
 import com.recallshot.core.LocalSearchIndex
 import com.recallshot.core.ScreenshotCategory
 import com.recallshot.core.ScreenshotRecord
+import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
-import java.time.Instant
-import com.recallshot.app.settings.SettingsRepository
 
 class ScreenshotRepository(private val context: Context) {
     @Volatile private var cachedSnapshot: List<ScreenshotEntity>? = null
@@ -25,6 +26,7 @@ class ScreenshotRepository(private val context: Context) {
     private val dao = RecallShotDatabase.get(context).screenshotDao()
     private val scanner = MediaStoreScanner(context, dao)
     private val sharedImporter = SharedImageImporter(context, dao)
+    private val smartClassifier = SmartClassificationEngine(context)
 
     val all: Flow<List<ScreenshotEntity>> = dao.observeAll()
 
@@ -57,12 +59,18 @@ class ScreenshotRepository(private val context: Context) {
     }
 
     suspend fun setFavorite(id: Long, value: Boolean) = dao.setFavorite(id, value)
-    suspend fun edit(id: Long, title: String, note: String, category: String) = dao.edit(id, title, note, category)
+
+    suspend fun edit(item: ScreenshotEntity, title: String, note: String, category: String) {
+        if (category != item.category) smartClassifier.learnCorrection(item, category)
+        dao.edit(item.id, title, note, category)
+    }
+
     suspend fun delete(id: Long) {
         val item = dao.getById(id)
         dao.deleteById(id)
         item?.privateCopyPath?.let { path -> runCatching { java.io.File(path).delete() } }
     }
+
     suspend fun deleteOriginalLegacy(id: Long) = withContext(Dispatchers.IO) {
         val item = dao.getById(id) ?: return@withContext
         if (item.sourceKind == "MEDIASTORE") {
@@ -71,6 +79,7 @@ class ScreenshotRepository(private val context: Context) {
         }
         delete(id)
     }
+
     suspend fun setReminder(id: Long, time: Long?) = dao.setReminder(id, time)
     suspend fun clearAllReminders() = dao.clearAllReminders()
 
