@@ -15,6 +15,13 @@ android {
         versionCode = 13
         versionName = "0.3.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Google Play production bundle: physical Android phones/tablets are ARM.
+        // Excluding x86/x86_64 removes duplicate ML Kit native binaries that are
+        // useful mainly for emulators and materially inflate the AAB upload size.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     buildTypes {
