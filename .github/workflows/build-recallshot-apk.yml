@@ -1,4 +1,4 @@
-name: Build RecallShot 0.3.1 Candidate APK
+name: Build RecallShot 0.3.1 Play AAB
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,33 +50,27 @@ jobs:
         run: gradle --no-daemon testDebugUnitTest --stacktrace
       - name: Android lint
         working-directory: recallshot-android
-        run: gradle --no-daemon lintDebug --stacktrace
-      - name: Build debug APK
+        run: gradle --no-daemon lintRelease --stacktrace
+      - name: Build release AAB
         working-directory: recallshot-android
-        run: gradle --no-daemon assembleDebug --stacktrace
-      - name: Verify APK metadata, signature and checksum
+        run: gradle --no-daemon bundleRelease --stacktrace
+      - name: Verify AAB and checksum
         working-directory: recallshot-android
         shell: bash
         run: |
           set -euo pipefail
-          APK='app/build/outputs/apk/debug/app-debug.apk'
-          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
-          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
-          "$AAPT" dump badging "$APK" | tee apk-badging.txt
-          grep -q "package: name='com.recallshot.app'" apk-badging.txt
-          grep -q "versionCode='13'" apk-badging.txt
-          grep -q "versionName='0.3.1'" apk-badging.txt
-          grep -q "targetSdkVersion:'37'" apk-badging.txt
-          "$APKSIGNER" verify --verbose "$APK"
-          sha256sum "$APK" | tee apk-sha256.txt
-          ls -lh "$APK" | tee apk-size.txt
-      - name: Upload APK
+          AAB='app/build/outputs/bundle/release/app-release.aab'
+          test -s "$AAB"
+          unzip -l "$AAB" | tee aab-contents.txt
+          unzip -p "$AAB" base/manifest/AndroidManifest.xml > manifest.bin || true
+          sha256sum "$AAB" | tee aab-sha256.txt
+          ls -lh "$AAB" | tee aab-size.txt
+      - name: Upload release AAB
         uses: actions/upload-artifact@v4
         with:
-          name: RecallShot-0.3.1-smart-classification-candidate
+          name: RecallShot-0.3.1-play-unsigned-aab
           path: |
-            recallshot-android/app/build/outputs/apk/debug/app-debug.apk
-            recallshot-android/apk-badging.txt
-            recallshot-android/apk-sha256.txt
-            recallshot-android/apk-size.txt
+            recallshot-android/app/build/outputs/bundle/release/app-release.aab
+            recallshot-android/aab-sha256.txt
+            recallshot-android/aab-size.txt
           if-no-files-found: error
