@@ -64,4 +64,4 @@ jobs:
           name: Principio_Tablet_Notifier_1.1.0_APK
           path: Principio_Tablet_Notifier_1.1.0.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
