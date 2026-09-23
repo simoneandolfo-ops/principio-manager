@@ -75,7 +75,7 @@ jobs:
             Principio_Manager_FRONTEND_BUILD_RESULT.tgz
             Principio_Manager_FRONTEND_BUILD_RESULT.sha256
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
 
       - name: Write visible CI status
         if: always()
